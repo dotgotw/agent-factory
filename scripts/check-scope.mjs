@@ -6,12 +6,9 @@
  * 這是「邊界用機制擋、不用 prompt 擋」的實作。
  */
 import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { allowedPathsFor, loadScope } from './role.mjs';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const config = JSON.parse(readFileSync(join(here, 'scope.json'), 'utf8'));
+const config = loadScope();
 
 const role = process.argv[2];
 const baseRef = process.argv[3] ?? 'origin/main';
@@ -22,7 +19,7 @@ if (!role || !config.roles[role]) {
   process.exit(2);
 }
 
-const allowed = [...config.roles[role].allow, ...config._everyone];
+const allowed = allowedPathsFor(role, config);
 
 let changed;
 try {
