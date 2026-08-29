@@ -54,6 +54,11 @@ export interface components {
             status: components["schemas"]["ProjectStatus"];
             /** Format: date-time */
             createdAt: string;
+            /**
+             * Format: email
+             * @description 專案負責人信箱。選填,見 change-requests/CR-002.md
+             */
+            ownerEmail?: string;
         };
         CreateProjectRequest: {
             name: string;
