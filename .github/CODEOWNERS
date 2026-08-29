@@ -5,17 +5,30 @@
 # 換成 agent:infra 就過了。規則的執行者被冒充,規則就不存在。
 #
 # 所以「規則本身」與「唯一真相」的變更一律要人類點頭。
-# 需搭配分支保護開啟 "Require review from Code Owners" 才會生效。
+# 已搭配 main 的 branch ruleset 開啟 "Require review from Code Owners"。
+#
+# 為什麼是 @zozo0526 而不是 @dotgotw:
+#   dotgotw 是 organization,CODEOWNERS 只接受使用者(@user)或
+#   團隊(@org/team-slug),組織名不是合法的 owner —— 填了不會報錯,
+#   只是那一行永遠不生效。
+#
+# 目前 repo 只有 zozo0526 一個協作者,而 PR 也都由他送出。GitHub 不允許
+# 核准自己的 PR,所以這個檢查實際上無法被滿足,只能由 repository admin
+# bypass 合併。這是刻意接受的:它把「agent 悄悄合併」變成「人類知情地
+# 合併」,但它不是第二雙眼睛,別誤會它的強度。
+#
+# 之後若有第二個人:在 org 建 team、把 team 加進本 repo 並給 write 權限,
+# 再把下面改成 @dotgotw/<team-slug>。沒有 write 權限的 team 一樣不算數。
 
 # 規則的執行者
-/.github/       @dotgotw @zozo0526
-/scripts/       @dotgotw @zozo0526
-/.claude/       @dotgotw @zozo0526
-/CLAUDE.md      @dotgotw @zozo0526
-/AGENTS.md      @dotgotw @zozo0526
+/.github/       @zozo0526
+/scripts/       @zozo0526
+/.claude/       @zozo0526
+/CLAUDE.md      @zozo0526
+/AGENTS.md      @zozo0526
 
 # 唯一真相
-/contract/      @dotgotw @zozo0526
+/contract/      @zozo0526
 
 # 自動生成,不該有人手改
-/generated/     @dotgotw @zozo0526
+/generated/     @zozo0526
