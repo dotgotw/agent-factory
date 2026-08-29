@@ -1,0 +1,28 @@
+{
+  "name": "agent-factory",
+  "version": "1.0.0",
+  "scripts": {
+    "gen:types": "bash scripts/gen-types.sh",
+    "check:drift": "bash scripts/gen-types.sh && node scripts/sync-agents.mjs && git diff --exit-code generated/ AGENTS.md",
+    "check:scope": "node scripts/check-scope.mjs",
+    "typecheck": "tsc -p backend/tsconfig.json && tsc -p frontend/tsconfig.json && tsc -p e2e/tsconfig.json",
+    "test:e2e": "node --import tsx --test e2e/*.spec.ts",
+    "dev:backend": "tsx watch backend/src/index.ts",
+    "verify": "npm run check:drift && npm run typecheck && npm run test:e2e",
+    "sync:agents": "node scripts/sync-agents.mjs"
+  },
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/express": "^4.17.25",
+    "@types/node": "^26.4.0",
+    "openapi-typescript": "^7.13.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "express": "^4.22.2"
+  },
+  "type": "module",
+  "private": true
+}

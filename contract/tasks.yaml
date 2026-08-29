@@ -1,0 +1,54 @@
+# 任務狀態機。用 YAML 而非 markdown,因為狀態與依賴需要能被腳本查詢。
+# status: todo | in_progress | blocked | review | done
+
+tasks:
+  - id: TASK-001
+    title: 建立專案 API
+    owner: backend
+    status: done
+    depends_on: []
+    contract_refs:
+      - "openapi.yaml#/paths/~1projects/post"
+    acceptance:
+      - id: AC-001
+        text: 新專案建立後回 201,狀態為 active,且含 id 與 createdAt
+      - id: AC-002
+        text: 名稱為空或全空白時回 400,code 為 VALIDATION_ERROR
+
+  - id: TASK-002
+    title: 專案列表與單筆查詢
+    owner: backend
+    status: done
+    depends_on: [TASK-001]
+    contract_refs:
+      - "openapi.yaml#/paths/~1projects/get"
+      - "openapi.yaml#/paths/~1projects~1{projectId}/get"
+    acceptance:
+      - id: AC-003
+        text: 建立後的專案可於列表查得
+      - id: AC-004
+        text: 查詢不存在的 id 回 404,code 為 NOT_FOUND
+
+  - id: TASK-003
+    title: 專案列表畫面
+    owner: frontend
+    status: done
+    depends_on: []   # 對 contract 開發,不需等 backend
+    contract_refs:
+      - "openapi.yaml#/components/schemas/Project"
+    acceptance:
+      - id: AC-005
+        text: 顯示名稱、狀態、建立日期
+      - id: AC-006
+        text: 無資料時顯示空狀態
+
+  - id: TASK-004
+    title: 專案封存功能
+    owner: backend
+    status: blocked
+    blocked_reason: "contract 尚未定義 PATCH /projects/{id};見 change-requests/CR-001.md"
+    depends_on: [TASK-002]
+    contract_refs: []
+    acceptance:
+      - id: AC-007
+        text: 封存後狀態變為 archived,且不出現在 status=active 的列表中

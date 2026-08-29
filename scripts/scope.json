@@ -1,0 +1,39 @@
+{
+  "_comment": "每個角色可寫入的路徑。CI 依此擋 PR。AGENTS.md 是給 Agent 看的請求,本檔是給你看的保證。",
+  "_everyone": ["change-requests/"],
+  "roles": {
+    "architect": {
+      "allow": ["contract/", "generated/"],
+      "note": "唯一能改 API contract 與 DB migration 的角色"
+    },
+    "infra": {
+      "allow": [
+        ".github/",
+        "scripts/",
+        "package.json",
+        "package-lock.json",
+        "tsconfig.json",
+        "backend/tsconfig.json",
+        "frontend/tsconfig.json",
+        "e2e/tsconfig.json",
+        "Dockerfile",
+        "docker-compose.yml",
+        ".env.example",
+        "infra/"
+      ],
+      "note": "規則的執行者。實作角色不得改動 CI,否則測試紅了可以直接把檢查拿掉。"
+    },
+    "backend": {
+      "allow": ["backend/src/"],
+      "note": "不得改 contract、frontend、e2e"
+    },
+    "frontend": {
+      "allow": ["frontend/src/"],
+      "note": "不得改 contract、backend、e2e"
+    },
+    "qa": {
+      "allow": ["e2e/"],
+      "note": "只讀驗收條件與 contract,不讀實作"
+    }
+  }
+}
