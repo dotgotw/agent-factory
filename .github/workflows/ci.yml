@@ -25,11 +25,17 @@ jobs:
       - name: Contract drift
         run: npm run check:drift
 
-      # ② 三個 scope 各自 typecheck。contract 與實作不一致會在這裡爆。
+      # ② CR 與 tasks.yaml 的一致性。
+      #    CR 狀態是 markdown 文字,沒有 schema 保護,靠人眼看不出漂移。
+      #    擋掉「CR 已 accepted 但任務還卡著」與非法的狀態寫法。
+      - name: CR consistency
+        run: npm run check:cr
+
+      # ③ 三個 scope 各自 typecheck。contract 與實作不一致會在這裡爆。
       - name: Typecheck
         run: npm run typecheck
 
-      # ③ 黑箱驗收測試。
+      # ④ 黑箱驗收測試。
       - name: E2E
         run: npm run test:e2e
 
@@ -45,7 +51,7 @@ jobs:
         with:
           node-version: '22'
 
-      # ④ 路徑邊界。角色從 PR label 取得(例如 label: agent:backend)。
+      # ⑤ 路徑邊界。角色從 PR label 取得(例如 label: agent:backend)。
       #    這是把 AGENTS.md 的「請求」變成 CI 的「保證」。
       - name: Path scope
         run: |
