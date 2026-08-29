@@ -2,6 +2,9 @@ name: CI
 
 on:
   pull_request:
+    # labeled / unlabeled 是必要的:預設觸發條件不含它們,
+    # 導致「PR 開好之後才補 label」不會重跑檢查,邊界形同未驗。
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
 
@@ -54,13 +57,19 @@ jobs:
       # ⑤ 路徑邊界。角色從 PR label 取得(例如 label: agent:backend)。
       #    這是把 AGENTS.md 的「請求」變成 CI 的「保證」。
       #
-      #    必須「恰好一個」agent:* label。先前用 `head -1` 只取第一個,
-      #    導致同時掛 agent:architect 與 agent:backend 就能讓其中一個角色
-      #    的路徑免檢 —— 等於憑加 label 就能繞過邊界。
+      #    必須「恰好一個」agent:* label。多個 label 並不會取得權限聯集
+      #    (所有檔案仍須符合單一角色),但究竟以哪個為準取決於 label 順序,
+      #    結果不可預期 —— 故直接拒絕,要求明確宣告。
       - name: Path scope
         env:
-          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          # 由 API 即時查詢 label,而非用事件 payload 的快照。
+          # payload 在事件觸發當下就固定,若 PR 建立後才補上 label
+          # (`gh pr create --label` 正是如此),payload 會是空陣列。
+          # 這在 #9 實際發生過:LABELS 為 [],檢查誤報「缺少 label」。
+          LABELS=$(gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name')
           ROLES=$(printf '%s' "$LABELS" | grep -o 'agent:[a-z]*' | sort -u)
           COUNT=$(printf '%s' "$ROLES" | grep -c . || true)
 
