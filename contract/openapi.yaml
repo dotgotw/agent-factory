@@ -102,6 +102,9 @@ components:
         createdAt:
           type: string
           format: date-time
+        ownerEmail:
+          type: string
+          format: email
 
     CreateProjectRequest:
       type: object
