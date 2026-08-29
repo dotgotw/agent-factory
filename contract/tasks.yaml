@@ -56,7 +56,10 @@ tasks:
   - id: TASK-005
     title: 專案負責人通知
     owner: backend
-    status: todo   # CR-002 已 accepted,contract 就緒,解除阻擋
+    # CR-002 已 accepted,ownerEmail 欄位就緒;但實作時發現列表 API
+    # 缺少分頁,無法有效率地掃出通知對象,故仍為 blocked。待 CR-003 裁決。
+    status: blocked
+    blocked_reason: "GET /projects 缺少分頁機制;見 change-requests/CR-003.md"
     depends_on: [TASK-002]
     contract_refs:
       - "openapi.yaml#/components/schemas/Project"
