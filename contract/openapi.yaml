@@ -102,6 +102,10 @@ components:
         createdAt:
           type: string
           format: date-time
+        ownerEmail:
+          type: string
+          format: email
+          description: 專案負責人信箱。選填,見 change-requests/CR-002.md
 
     CreateProjectRequest:
       type: object

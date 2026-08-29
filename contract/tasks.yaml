@@ -52,3 +52,16 @@ tasks:
     acceptance:
       - id: AC-007
         text: 封存後狀態變為 archived,且不出現在 status=active 的列表中
+
+  - id: TASK-005
+    title: 專案負責人通知
+    owner: backend
+    status: todo   # CR-002 已 accepted,contract 就緒,解除阻擋
+    depends_on: [TASK-002]
+    contract_refs:
+      - "openapi.yaml#/components/schemas/Project"
+    acceptance:
+      - id: AC-008
+        text: 專案狀態異動時,寄出通知至 ownerEmail
+      - id: AC-009
+        text: ownerEmail 未設定時略過通知,不得報錯
