@@ -1,0 +1,21 @@
+# CODEOWNERS —— 唯一擋得住「agent 自稱 infra」的東西。
+#
+# CI 的 check-scope.mjs 驗證的是「diff 是否符合 PR 宣告的角色」,
+# 但沒有任何機制驗證那個宣告為真:agent 想改 .github/ 只要把 label
+# 換成 agent:infra 就過了。規則的執行者被冒充,規則就不存在。
+#
+# 所以「規則本身」與「唯一真相」的變更一律要人類點頭。
+# 需搭配分支保護開啟 "Require review from Code Owners" 才會生效。
+
+# 規則的執行者
+/.github/       @dotgotw @zozo0526
+/scripts/       @dotgotw @zozo0526
+/.claude/       @dotgotw @zozo0526
+/CLAUDE.md      @dotgotw @zozo0526
+/AGENTS.md      @dotgotw @zozo0526
+
+# 唯一真相
+/contract/      @dotgotw @zozo0526
+
+# 自動生成,不該有人手改
+/generated/     @dotgotw @zozo0526

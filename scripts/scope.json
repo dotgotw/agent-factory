@@ -9,7 +9,9 @@
     "infra": {
       "allow": [
         ".github/",
+        ".claude/",
         "scripts/",
+        "CLAUDE.md",
         "package.json",
         "package-lock.json",
         "tsconfig.json",

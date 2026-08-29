@@ -27,7 +27,7 @@
 | 角色 | 可寫路徑 | 說明 |
 |---|---|---|
 | architect | `contract/`、`generated/` | 唯一能改 API contract 與 DB migration 的角色 |
-| infra | `.github/`、`scripts/`、`package.json`、`package-lock.json`、`tsconfig.json`、`backend/tsconfig.json`、`frontend/tsconfig.json`、`e2e/tsconfig.json`、`Dockerfile`、`docker-compose.yml`、`.env.example`、`.gitignore`、`.gitattributes`、`README.md`、`AGENTS.md`、`backend/AGENTS.md`、`frontend/AGENTS.md`、`infra/` | 規則的執行者。實作角色不得改動 CI,否則測試紅了可以直接把檢查拿掉。同理,AGENTS.md 由 infra 保管 —— 角色不得改寫自己被賦予的規則。 |
+| infra | `.github/`、`.claude/`、`scripts/`、`CLAUDE.md`、`package.json`、`package-lock.json`、`tsconfig.json`、`backend/tsconfig.json`、`frontend/tsconfig.json`、`e2e/tsconfig.json`、`Dockerfile`、`docker-compose.yml`、`.env.example`、`.gitignore`、`.gitattributes`、`README.md`、`AGENTS.md`、`backend/AGENTS.md`、`frontend/AGENTS.md`、`infra/` | 規則的執行者。實作角色不得改動 CI,否則測試紅了可以直接把檢查拿掉。同理,AGENTS.md 由 infra 保管 —— 角色不得改寫自己被賦予的規則。 |
 | backend | `backend/src/` | 不得改 contract、frontend、e2e |
 | frontend | `frontend/src/` | 不得改 contract、backend、e2e |
 | qa | `e2e/` | 只讀驗收條件與 contract,不讀實作 |
@@ -35,9 +35,20 @@
 所有角色皆可寫 `change-requests/`。
 <!-- AGENT-FACTORY:END -->
 
+## 本 session 是哪個角色
+
+```bash
+npm run whoami
+```
+
+角色來自 `AGENT_ROLE` 環境變數或 `.claude/role`(不進版控)。沒有角色就別動手。
+越界的寫入會被 `.claude/hooks/scope-guard.mjs` 當場擋下 —— 那是提醒,不是邊界;
+邊界是 CI 的 `check:scope` 與 `.github/CODEOWNERS` 要求的人類 review。
+
 ## 指令
 
 ```bash
+npm run whoami        # 我是誰、我能寫哪裡
 npm run gen:types     # contract -> 型別
 npm run typecheck     # 三個 scope 各自 typecheck
 npm run test:e2e      # 黑箱驗收測試

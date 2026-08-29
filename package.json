@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "gen:types": "bash scripts/gen-types.sh",
+    "whoami": "node scripts/role.mjs",
     "check:drift": "bash scripts/gen-types.sh && node scripts/sync-agents.mjs && git diff --exit-code generated/ AGENTS.md",
     "check:scope": "node scripts/check-scope.mjs",
     "check:cr": "node scripts/check-cr.mjs",
