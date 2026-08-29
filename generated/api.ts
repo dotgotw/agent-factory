@@ -80,6 +80,8 @@ export interface operations {
         parameters: {
             query?: {
                 status?: components["schemas"]["ProjectStatus"];
+                limit?: number;
+                offset?: number;
             };
             header?: never;
             path?: never;
@@ -95,6 +97,11 @@ export interface operations {
                 content: {
                     "application/json": {
                         items: components["schemas"]["Project"][];
+                        /**
+                         * @description 符合篩選條件的總筆數,用於前端計算頁數。
+                         *     階段一為選填,待 backend 實作後由 CR-003 階段三改為必填。
+                         */
+                        total?: number;
                     };
                 };
             };
