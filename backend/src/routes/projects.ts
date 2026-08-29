@@ -13,10 +13,40 @@ const db = new Map<string, Project>();
 
 export const projectsRouter = Router();
 
-projectsRouter.get('/', (req: Request, res: Response<ListResponse>) => {
+/**
+ * 解析選填的整數 query 參數。
+ * 回傳 null 表示格式非法(非數字、負數、小數),由呼叫端回 400。
+ */
+function intParam(raw: unknown, fallback: number): number | null {
+  if (raw === undefined) return fallback;
+  if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return null;
+  return Number(raw);
+}
+
+projectsRouter.get('/', (req: Request, res: Response<ListResponse | ApiError>) => {
   const status = req.query.status as Project['status'] | undefined;
-  const items = [...db.values()].filter((p) => !status || p.status === status);
-  res.json({ items });
+
+  // 預設值與範圍皆依 contract 的 schema(limit: 1..100 預設 20;offset: ≥0 預設 0)。
+  const limit = intParam(req.query.limit, 20);
+  const offset = intParam(req.query.offset, 0);
+
+  if (limit === null || limit < 1 || limit > 100) {
+    return res.status(400).json({
+      code: 'VALIDATION_ERROR',
+      message: 'limit 必須是 1 到 100 之間的整數',
+    });
+  }
+  if (offset === null) {
+    return res.status(400).json({
+      code: 'VALIDATION_ERROR',
+      message: 'offset 必須是不小於 0 的整數',
+    });
+  }
+
+  const matched = [...db.values()].filter((p) => !status || p.status === status);
+
+  // total 是「篩選後、分頁前」的筆數 —— 前端據此計算頁數。
+  res.json({ items: matched.slice(offset, offset + limit), total: matched.length });
 });
 
 projectsRouter.post(
