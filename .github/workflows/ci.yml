@@ -53,13 +53,33 @@ jobs:
 
       # ⑤ 路徑邊界。角色從 PR label 取得(例如 label: agent:backend)。
       #    這是把 AGENTS.md 的「請求」變成 CI 的「保證」。
+      #
+      #    必須「恰好一個」agent:* label。先前用 `head -1` 只取第一個,
+      #    導致同時掛 agent:architect 與 agent:backend 就能讓其中一個角色
+      #    的路徑免檢 —— 等於憑加 label 就能繞過邊界。
       - name: Path scope
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
-          ROLE=$(echo '${{ toJSON(github.event.pull_request.labels.*.name) }}' \
-            | grep -o 'agent:[a-z]*' | head -1 | cut -d: -f2)
-          if [ -z "$ROLE" ]; then
+          ROLES=$(printf '%s' "$LABELS" | grep -o 'agent:[a-z]*' | sort -u)
+          COUNT=$(printf '%s' "$ROLES" | grep -c . || true)
+
+          if [ "$COUNT" -eq 0 ]; then
             echo "❌ PR 缺少 agent:<role> label"
             exit 1
           fi
+
+          if [ "$COUNT" -gt 1 ]; then
+            echo "❌ PR 掛了 $COUNT 個角色 label:"
+            # 不依賴 unquoted 展開的字詞分割 —— zsh 與 bash 行為不同。
+            printf '%s\n' "$ROLES" | sed 's/^/   - /'
+            echo ""
+            echo "   一個 PR 只能屬於一個角色。跨角色的變更請拆成多個 PR,"
+            echo "   否則邊界檢查只會驗證其中一個角色,形同虛設。"
+            exit 1
+          fi
+
+          ROLE=${ROLES#agent:}
+          echo "角色 label: $ROLES"
           git fetch origin ${{ github.base_ref }}
           node scripts/check-scope.mjs "$ROLE" "origin/${{ github.base_ref }}"
