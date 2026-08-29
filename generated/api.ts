@@ -98,10 +98,10 @@ export interface operations {
                     "application/json": {
                         items: components["schemas"]["Project"][];
                         /**
-                         * @description 符合篩選條件的總筆數,用於前端計算頁數。
-                         *     階段一為選填,待 backend 實作後由 CR-003 階段三改為必填。
+                         * @description 符合篩選條件的總筆數(分頁前),用於前端計算頁數。
+                         *     必填 —— 見 change-requests/CR-003.md 階段三。
                          */
-                        total?: number;
+                        total: number;
                     };
                 };
             };

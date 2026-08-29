@@ -70,7 +70,7 @@ tasks:
   - id: TASK-006
     title: 列表分頁實作(CR-003 階段二)
     owner: backend
-    status: todo
+    status: done   # 實作見 #9,驗收測試見 #11
     depends_on: [TASK-002]
     contract_refs:
       - "openapi.yaml#/paths/~1projects/get"
