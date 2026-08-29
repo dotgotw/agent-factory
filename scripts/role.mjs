@@ -63,9 +63,10 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     console.log('角色: (未指派)');
     console.log(`可用角色: ${Object.keys(config.roles).join(', ')}`);
     console.log('');
-    console.log('指派方式(擇一):');
-    console.log('  echo backend > .claude/role     # 這個 checkout 一直有效');
-    console.log('  export AGENT_ROLE=backend       # 只在目前 shell 有效');
+    console.log('指派方式(由開 session 的人決定,不是由 agent 自己挑):');
+    console.log('  雲端: 每個角色一個環境,環境變數設 AGENT_ROLE');
+    console.log('  本機: AGENT_ROLE=backend claude');
+    console.log('  臨時: echo backend > .claude/role  # 方便,但 agent 改得到');
     process.exit(3);
   }
 
