@@ -1,6 +1,6 @@
 {
   "name": "agent-factory",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "scripts": {
     "gen:types": "bash scripts/gen-types.sh",
     "check:drift": "bash scripts/gen-types.sh && node scripts/sync-agents.mjs && git diff --exit-code generated/ AGENTS.md",
