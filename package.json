@@ -6,11 +6,12 @@
     "role": "node scripts/role.mjs",
     "check:drift": "bash scripts/gen-types.sh && node scripts/sync-agents.mjs && git diff --exit-code generated/ AGENTS.md",
     "check:scope": "node scripts/check-scope.mjs",
+    "test:scope": "node --test scripts/scope.test.mjs",
     "check:cr": "node scripts/check-cr.mjs",
     "typecheck": "tsc -p backend/tsconfig.json && tsc -p frontend/tsconfig.json && tsc -p e2e/tsconfig.json",
     "test:e2e": "node --import tsx --test e2e/*.spec.ts",
     "dev:backend": "tsx watch backend/src/index.ts",
-    "verify": "pnpm check:drift && pnpm check:cr && pnpm typecheck && pnpm test:e2e",
+    "verify": "pnpm test:scope && pnpm check:drift && pnpm check:cr && pnpm typecheck && pnpm test:e2e",
     "sync:agents": "node scripts/sync-agents.mjs"
   },
   "author": "",

@@ -5,12 +5,22 @@
  * 比對本分支相對 base-ref 更動的檔案,確認全都落在該角色的 scope 內。
  * 這是「邊界用機制擋、不用 prompt 擋」的實作。
  *
+ * 判斷本身不在這裡 —— 在 role.mjs 的 classifyPath(),與 scope-guard hook
+ * 共用同一份。兩邊各寫一份比對邏輯的話,遲早會出現 hook 放行、CI 擋下
+ * (或反過來)的組合,那比沒有檢查更難查。
+ *
  * 衍生路徑(scope.json 的 _derived)是例外,但不是放寬:本檢查只確認
  * 這個角色有資格夾帶它,不確認內容 —— 內容的權威是 check:drift。
  * 兩者分屬不同 job,所以兩個都必須是 required check,見 ADR-002。
  */
 import { execSync } from 'node:child_process';
-import { allowedPathsFor, derivedPathsFor, loadScope } from './role.mjs';
+import {
+  allowedPathsFor,
+  classifyPath,
+  derivedPathsFor,
+  exceptionsFor,
+  loadScope,
+} from './role.mjs';
 
 const config = loadScope();
 
@@ -25,6 +35,7 @@ if (!role || !config.roles[role]) {
 
 const allowed = allowedPathsFor(role, config);
 const derived = derivedPathsFor(role, config);
+const exceptions = exceptionsFor(role, config);
 
 let changed;
 try {
@@ -39,16 +50,42 @@ try {
   process.exit(2);
 }
 
-const matches = (file, prefixes) => prefixes.some((p) => file.startsWith(p));
+const owned = [];
+const carried = [];
+const violations = [];
 
-const owned = changed.filter((f) => matches(f, allowed));
-const carried = changed.filter((f) => !matches(f, allowed) && matches(f, derived));
-const violations = changed.filter(
-  (f) => !matches(f, allowed) && !matches(f, derived),
-);
+for (const file of changed) {
+  const verdict = classifyPath(file, role, config);
+  switch (verdict.kind) {
+    case 'owned':
+    case 'everyone':
+    case 'outside':
+      owned.push(file);
+      break;
+    case 'derived':
+      if (verdict.derived.info.writers.includes(role)) carried.push(file);
+      else
+        violations.push({
+          file,
+          why: `衍生路徑 ${verdict.derived.prefix},可夾帶的角色: ${verdict.derived.info.writers.join('、')}`,
+        });
+      break;
+    case 'foreign':
+      violations.push({ file, why: `歸 ${verdict.owner}(規則 "${verdict.rule}")` });
+      break;
+    default:
+      violations.push({ file, why: '沒有任何角色擁有這個路徑' });
+  }
+}
 
 console.log(`角色: ${role}`);
 console.log(`可寫路徑: ${allowed.join(', ')}`);
+if (exceptions.length > 0) {
+  // 最長前綴勝出之後,「可寫路徑」不再等於「這個前綴底下的全部」。
+  console.log(
+    `  例外(歸別人): ${exceptions.map((e) => `${e.rule} → ${e.owner}`).join(', ')}`,
+  );
+}
 if (derived.length > 0) {
   console.log(`可夾帶的衍生路徑: ${derived.join(', ')}`);
 }
@@ -64,7 +101,7 @@ if (carried.length > 0) {
 
 if (violations.length > 0) {
   console.error(`\n❌ 越界 ${violations.length} 個檔案:`);
-  for (const v of violations) console.error(`   - ${v}`);
+  for (const v of violations) console.error(`   - ${v.file} —— ${v.why}`);
   console.error(
     `\n   ${config.roles[role].note}` +
       `\n   若確實需要改動這些檔案,請在 change-requests/ 開一份 CR。`,
