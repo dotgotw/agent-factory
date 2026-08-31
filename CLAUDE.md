@@ -4,7 +4,7 @@
 
 ## 你是誰
 
-執行 `pnpm whoami`(等同 `node scripts/role.mjs`)取得本 session 的角色與可寫路徑。
+執行 `pnpm role`(等同 `node scripts/role.mjs`)取得本 session 的角色與可寫路徑。
 
 沒有角色就**不要動手**——先問人。越界的寫入會被 PreToolUse hook 擋下,
 但那是提醒,不是允許你去試探邊界。

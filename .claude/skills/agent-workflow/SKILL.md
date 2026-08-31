@@ -14,7 +14,7 @@ description: agent-factory 的角色工作流程 —— 確認自己的角色、
 ## 1. 開工前
 
 ```bash
-pnpm whoami
+pnpm role
 ```
 
 沒有角色就停下來問人,不要猜。角色決定你能寫哪些路徑,猜錯的代價是
