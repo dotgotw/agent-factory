@@ -1,5 +1,14 @@
 # 任務狀態機。用 YAML 而非 markdown,因為狀態與依賴需要能被腳本查詢。
 # status: todo | in_progress | blocked | review | done
+#
+# 每一條 acceptance 必須宣告 verified_by,見 change-requests/CR-006.md:
+#   e2e    — 由 e2e/*.spec.ts 自動驗收。任務進入 done 時,scripts/check-ac.mjs
+#            會要求 e2e 裡找得到這個 AC 編號,找不到就紅。
+#   manual — 黑箱 e2e 架構上打不到(例如純畫面的驗收)。必須附 verified_note
+#            寫明為什麼,讓「這條沒有自動化測試」是讀得到的事實而不是默契。
+#
+# 刻意沒有 "none" 這個值。少寫一條測試不會讓 CI 變紅,它讓 CI 變得更綠 ——
+# 這種漂移是單向的,給一個零成本的逃生門等於把它制度化。
 
 tasks:
   - id: TASK-001
@@ -12,8 +21,10 @@ tasks:
     acceptance:
       - id: AC-001
         text: 新專案建立後回 201,狀態為 active,且含 id 與 createdAt
+        verified_by: e2e
       - id: AC-002
         text: 名稱為空或全空白時回 400,code 為 VALIDATION_ERROR
+        verified_by: e2e
 
   - id: TASK-002
     title: 專案列表與單筆查詢
@@ -26,21 +37,29 @@ tasks:
     acceptance:
       - id: AC-003
         text: 建立後的專案可於列表查得
+        verified_by: e2e
       - id: AC-004
         text: 查詢不存在的 id 回 404,code 為 NOT_FOUND
+        verified_by: e2e
 
   - id: TASK-003
     title: 專案列表畫面
     owner: frontend
-    status: done
+    # AC-005/AC-006 是 manual 驗收,而人工驗收沒有紀錄 —— 實作完成但還沒被
+    # 驗過,那就是 review 不是 done。見 change-requests/CR-006.md。
+    status: review
     depends_on: []   # 對 contract 開發,不需等 backend
     contract_refs:
       - "openapi.yaml#/components/schemas/Project"
     acceptance:
       - id: AC-005
         text: 顯示名稱、狀態、建立日期
+        verified_by: manual
+        verified_note: 黑箱 e2e 只 spawn backend 發 HTTP,打不到畫面;見 CR-006
       - id: AC-006
         text: 無資料時顯示空狀態
+        verified_by: manual
+        verified_note: 空狀態是純畫面的條件,改寫成 API 層的斷言就不是原本那條 AC 了
 
   - id: TASK-004
     title: 專案封存功能
@@ -52,6 +71,7 @@ tasks:
     acceptance:
       - id: AC-007
         text: 封存後狀態變為 archived,且不出現在 status=active 的列表中
+        verified_by: e2e
 
   - id: TASK-005
     title: 專案負責人通知
@@ -64,8 +84,10 @@ tasks:
     acceptance:
       - id: AC-008
         text: 專案狀態異動時,寄出通知至 ownerEmail
+        verified_by: e2e
       - id: AC-009
         text: ownerEmail 未設定時略過通知,不得報錯
+        verified_by: e2e
 
   - id: TASK-006
     title: 列表分頁實作(CR-003 階段二)
@@ -77,7 +99,10 @@ tasks:
     acceptance:
       - id: AC-010
         text: limit 與 offset 生效,未帶參數時預設 limit=20、offset=0
+        verified_by: e2e
       - id: AC-011
         text: 回應帶上 total,其值為套用 status 篩選後、分頁前的總筆數
+        verified_by: e2e
       - id: AC-012
         text: limit 超出 1..100 範圍時回 400,code 為 VALIDATION_ERROR
+        verified_by: e2e
