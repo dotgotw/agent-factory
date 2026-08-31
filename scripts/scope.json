@@ -5,7 +5,7 @@
     "generated/": {
       "note": "由 gen:types 從 contract/openapi.yaml 生成,不由任何角色撰寫。",
       "writers": ["architect", "infra"],
-      "inputs": ["contract/openapi.yaml", "scripts/gen-types.sh", "package.json"],
+      "inputs": ["contract/openapi.yaml", "scripts/gen-types.sh", "package.json", "pnpm-lock.yaml"],
       "guard": "check:drift"
     }
   },
@@ -21,7 +21,6 @@
         "scripts/",
         "CLAUDE.md",
         "package.json",
-        "package-lock.json",
         "pnpm-lock.yaml",
         "tsconfig.json",
         "backend/tsconfig.json",
