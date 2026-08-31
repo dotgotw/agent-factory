@@ -84,7 +84,10 @@ async function waitForServer(
 }
 
 async function terminate(child: ChildProcess): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return; // 已經結束
+  if (child.exitCode !== null || child.signalCode !== null) {
+    closeStderr(child);
+    return; // 已經結束
+  }
 
   const exited = once(child, 'exit'); // 先掛監聽,才不會錯過 kill 後的事件
   child.kill('SIGTERM');
@@ -93,18 +96,31 @@ async function terminate(child: ChildProcess): Promise<void> {
     exited.then(() => true),
     sleep(TERM_GRACE_MS, true).then(() => false),
   ]);
-  if (inTime) return;
+  if (inTime) {
+    closeStderr(child);
+    return;
+  }
 
   // 卡住的行程會佔著 port 害下一輪,不留餘地。
   child.kill('SIGKILL');
   await exited;
+  closeStderr(child);
+}
+
+/** pipe 的讀取端留著就是一個 open handle,行程會因此不肯結束。 */
+function closeStderr(child: ChildProcess): void {
+  child.stderr?.destroy();
 }
 
 export async function startServer(port: number): Promise<TestServer> {
   const base = `http://localhost:${port}`;
   await assertPortFree(base, port);
 
-  const child = spawn('npx', ['tsx', 'backend/src/index.ts'], {
+  // 直接跑 node,不透過 npx。npx 會多包一層外殼行程,`kill` 打到的是外殼,
+  // 真正的 server 是它的孫行程 —— 活下來繼續佔著 port(正是本 CR 的根因),
+  // 而且抓著下面那條 stderr pipe 不放,害 `node --test` 的子行程永遠等不到
+  // stream 結束而卡住。`--import tsx` 與 package.json 的 test:e2e 同一套。
+  const child = spawn(process.execPath, ['--import', 'tsx', 'backend/src/index.ts'], {
     env: { ...process.env, PORT: String(port) },
     // stdout 丟掉(啟動訊息對測試沒用),但 stderr 一定要留:
     // EADDRINUSE 這種真正需要看到的錯誤只會出現在那裡。
