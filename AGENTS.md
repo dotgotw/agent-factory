@@ -27,7 +27,7 @@
 | 角色 | 可寫路徑 | 說明 |
 |---|---|---|
 | architect | `contract/` | 唯一能改 API contract 與 DB migration 的角色 |
-| infra | `.github/`、`.claude/`、`scripts/`、`CLAUDE.md`、`package.json`、`package-lock.json`、`tsconfig.json`、`backend/tsconfig.json`、`frontend/tsconfig.json`、`e2e/tsconfig.json`、`Dockerfile`、`docker-compose.yml`、`.env.example`、`.gitignore`、`.gitattributes`、`README.md`、`AGENTS.md`、`backend/AGENTS.md`、`frontend/AGENTS.md`、`infra/` | 規則的執行者。實作角色不得改動 CI,否則測試紅了可以直接把檢查拿掉。同理,AGENTS.md 由 infra 保管 —— 角色不得改寫自己被賦予的規則。 |
+| infra | `.github/`、`.claude/`、`scripts/`、`CLAUDE.md`、`package.json`、`package-lock.json`、`pnpm-lock.yaml`、`tsconfig.json`、`backend/tsconfig.json`、`frontend/tsconfig.json`、`e2e/tsconfig.json`、`Dockerfile`、`docker-compose.yml`、`.env.example`、`.gitignore`、`.gitattributes`、`README.md`、`AGENTS.md`、`backend/AGENTS.md`、`frontend/AGENTS.md`、`infra/` | 規則的執行者。實作角色不得改動 CI,否則測試紅了可以直接把檢查拿掉。同理,AGENTS.md 由 infra 保管 —— 角色不得改寫自己被賦予的規則。 |
 | backend | `backend/src/` | 不得改 contract、frontend、e2e |
 | frontend | `frontend/src/` | 不得改 contract、backend、e2e |
 | qa | `e2e/` | 只讀驗收條件與 contract,不讀實作 |
