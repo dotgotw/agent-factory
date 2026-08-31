@@ -8,6 +8,15 @@ on:
   push:
     branches: [main]
 
+# ⚠️  verify 與 scope 兩個 job 必須「都是」required check。
+#
+#     ADR-002 之後,generated/ 不再由任何角色擁有:scope 只確認「這個角色的 PR
+#     有資格夾帶它」,內容對不對改由 verify 裡的 check:drift 重新生成後比對。
+#     兩個保證分屬兩個 job,少了任何一個,另一個都不足以守住 generated/。
+#
+#     最危險的是拿掉 verify:scope 仍然綠燈,PR 仍然過,但 generated/ 的內容
+#     從此沒有人在看 —— 這個放寬會**靜默**變成漏洞,不會有任何一條紅線提醒你。
+#     見 contract/decisions/ADR-002-derived-artifacts-guarded-by-regeneration.md
 jobs:
   verify:
     runs-on: ubuntu-latest

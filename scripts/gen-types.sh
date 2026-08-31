@@ -8,6 +8,17 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# 先清空整個目錄再生成 —— 這是 ADR-002 的前提條件,不是潔癖。
+#
+# check:drift 的把關是 `git diff --exit-code generated/`,而 git diff 比對的是
+# 「工作區 vs index」的檔案內容。多塞一個檔案進 generated/ 並 commit,
+# 生成器不會覆寫它,git diff 也看不見它 —— 檢查照樣綠燈。
+#
+# 清空之後,生成器沒產出的檔案會變成 diff 裡的「刪除」,於是被抓到。
+# generated/ 的權威從此是「重新生成的結果」,而不是「生成器剛好會覆寫的那幾個檔案」。
+rm -rf generated
+mkdir -p generated
+
 npx --yes openapi-typescript contract/openapi.yaml -o generated/api.ts
 
 # 加上防手改的標頭
