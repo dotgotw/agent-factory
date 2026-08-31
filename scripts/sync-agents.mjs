@@ -44,6 +44,24 @@ function generateRolesMarkdown(scopeConfig) {
   if (everyonePaths) {
     result += `\n\n所有角色皆可寫 ${everyonePaths}。`;
   }
+
+  const derived = Object.entries(scopeConfig._derived || {});
+  if (derived.length > 0) {
+    const derivedRows = ['| 衍生路徑 | 可夾帶的角色 | 生成自 | 內容把關 |', '|---|---|---|---|'];
+    for (const [path, info] of derived) {
+      const writers = info.writers.join('、');
+      const inputs = info.inputs.map(i => `\`${i}\``).join('、');
+      derivedRows.push(`| \`${path}\` | ${writers} | ${inputs} | \`${info.guard}\` |`);
+    }
+    result +=
+      '\n\n### 衍生路徑\n\n' +
+      '不屬於任何角色 —— 它們是生成器的輸出,不是誰的財產。\n\n' +
+      derivedRows.join('\n') +
+      '\n\n「可夾帶」不等於擁有:那些角色的 PR 可以帶著重新生成的結果一起送,\n' +
+      '但檔案內容不由 scope 決定,由「內容把關」那一欄的檢查重新生成後比對。\n' +
+      '見 `contract/decisions/ADR-002-derived-artifacts-guarded-by-regeneration.md`。';
+  }
+
   return result;
 }
 

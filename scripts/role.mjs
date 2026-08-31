@@ -32,6 +32,30 @@ export function allowedPathsFor(role, config = loadScope()) {
   return [...config.roles[role].allow, ...config._everyone];
 }
 
+/**
+ * 該角色的變更集可以「帶著一起送」的衍生路徑。
+ *
+ * 衍生產物不屬於任何角色 —— 它是生成器的輸出,不是誰的財產(ADR-002)。
+ * writers 因此不是「誰擁有它」,而是「誰的 PR 可以夾帶重新生成的結果」,
+ * 名單由 inputs 的擁有者推導:改得到輸入的人,就改得到輸出。
+ *
+ * 內容的權威不在這裡,在每個項目的 guard(目前是 check:drift)。
+ * 這個函式只回答「這個檔案出現在這個角色的 diff 裡合不合理」。
+ */
+export function derivedPathsFor(role, config = loadScope()) {
+  if (!role) return [];
+  return Object.entries(config._derived ?? {})
+    .filter(([, info]) => info.writers.includes(role))
+    .map(([path]) => path);
+}
+
+/** 該角色的變更集允許出現的所有路徑 = 自己的 + 可夾帶的衍生。未知角色回傳 null。 */
+export function writablePathsFor(role, config = loadScope()) {
+  const owned = allowedPathsFor(role, config);
+  if (!owned) return null;
+  return [...owned, ...derivedPathsFor(role, config)];
+}
+
 /** 目前 session 的角色;未指派回傳 null。 */
 export function resolveRole() {
   const fromEnv = process.env.AGENT_ROLE?.trim();
@@ -45,10 +69,18 @@ export function resolveRole() {
   return null;
 }
 
+/**
+ * 轉成相對 repo 根目錄的路徑;repo 之外回傳 null。
+ * 接受絕對或相對路徑。
+ */
+export function toRepoRelative(filePath) {
+  const abs = resolve(rootDir, filePath);
+  return abs.startsWith(rootDir + '/') ? abs.slice(rootDir.length + 1) : null;
+}
+
 /** 路徑是否落在 allow 清單內。接受絕對或相對路徑。 */
 export function isPathAllowed(filePath, allowed) {
-  const abs = resolve(rootDir, filePath);
-  const rel = abs.startsWith(rootDir + '/') ? abs.slice(rootDir.length + 1) : null;
+  const rel = toRepoRelative(filePath);
   // repo 之外的檔案不歸 scope 管(暫存檔、~/.claude 等)。
   if (rel === null) return true;
   return allowed.some((prefix) => rel.startsWith(prefix));
@@ -80,4 +112,12 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
   console.log(`角色: ${role}`);
   console.log(`可寫路徑: ${allowed.join('、')}`);
   console.log(`說明: ${config.roles[role].note}`);
+
+  const derived = derivedPathsFor(role, config);
+  if (derived.length > 0) {
+    console.log('');
+    console.log(`可夾帶的衍生路徑: ${derived.join('、')}`);
+    console.log('  這些不是你的檔案,是生成器的輸出。你可以在自己的 PR 裡帶著');
+    console.log('  重新生成的結果一起送,但內容對不對由 check:drift 說了算。');
+  }
 }

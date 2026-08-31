@@ -1,9 +1,17 @@
 {
-  "_comment": "每個角色可寫入的路徑。CI 依此擋 PR。AGENTS.md 是給 Agent 看的請求,本檔是給你看的保證。",
+  "_comment": "每個角色可寫入的路徑。CI 依此擋 PR。AGENTS.md 是給 Agent 看的請求,本檔是給你看的保證。_derived 是衍生產物:沒有角色擁有它,內容的權威是 guard 指定的檢查,見 contract/decisions/ADR-002-derived-artifacts-guarded-by-regeneration.md。",
   "_everyone": ["change-requests/"],
+  "_derived": {
+    "generated/": {
+      "note": "由 gen:types 從 contract/openapi.yaml 生成,不由任何角色撰寫。",
+      "writers": ["architect", "infra"],
+      "inputs": ["contract/openapi.yaml", "scripts/gen-types.sh", "package.json"],
+      "guard": "check:drift"
+    }
+  },
   "roles": {
     "architect": {
-      "allow": ["contract/", "generated/"],
+      "allow": ["contract/"],
       "note": "唯一能改 API contract 與 DB migration 的角色"
     },
     "infra": {

@@ -10,7 +10,13 @@
  * 並且在 deny 的理由裡直接告訴 agent 該走 CR 流程。
  */
 import { readFileSync } from 'node:fs';
-import { allowedPathsFor, isPathAllowed, loadScope, resolveRole } from '../../scripts/role.mjs';
+import {
+  allowedPathsFor,
+  isPathAllowed,
+  loadScope,
+  resolveRole,
+  toRepoRelative,
+} from '../../scripts/role.mjs';
 
 function deny(reason) {
   process.stdout.write(
@@ -51,6 +57,30 @@ const roles = Object.keys(config.roles).join(', ');
 
 // 探索期的逃生門:設 AGENT_SCOPE_ENFORCE=warn 就只提示不擋。
 const enforcing = (process.env.AGENT_SCOPE_ENFORCE ?? 'deny') !== 'warn';
+
+// 衍生產物:對所有角色一律擋手改,與角色無關(ADR-002)。
+//
+// scope.json 的 writers 管的是「誰的 PR 可以夾帶重新生成的結果」,那是
+// check-scope 在 PR 層級的判斷。這個 hook 攔的是 Edit/Write —— 也就是
+// 手改本身,而手改衍生檔案對任何角色都是錯的:內容會在下一次重新生成時
+// 被覆蓋,然後 check:drift 判紅。早點講比讓他改完再紅好。
+const rel = toRepoRelative(filePath);
+const derivedHit = rel
+  ? Object.keys(config._derived ?? {}).find((prefix) => rel.startsWith(prefix))
+  : null;
+
+if (derivedHit) {
+  if (!enforcing) allow();
+  const info = config._derived[derivedHit];
+  deny(
+    `\`${filePath}\` 是衍生產物,不由任何角色手動撰寫。\n` +
+      `${info.note}\n\n` +
+      `要改它,改生成器的輸入再重新生成:\n` +
+      `${info.inputs.map((i) => `  - ${i}`).join('\n')}\n\n` +
+      `內容的權威是 \`${info.guard}\`,不是 scope。手改會在下一次檢查被覆蓋並判紅。\n` +
+      `見 contract/decisions/ADR-002-derived-artifacts-guarded-by-regeneration.md`,
+  );
+}
 
 if (!role) {
   if (!enforcing) allow();
