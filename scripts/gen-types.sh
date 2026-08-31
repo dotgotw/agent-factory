@@ -19,14 +19,14 @@ cd "$(dirname "$0")/.."
 rm -rf generated
 mkdir -p generated
 
-npx --yes openapi-typescript contract/openapi.yaml -o generated/api.ts
+pnpm exec openapi-typescript contract/openapi.yaml -o generated/api.ts
 
 # 加上防手改的標頭
 tmp="$(mktemp)"
 {
   echo "// ⚠️  AUTO-GENERATED — 請勿手動修改。"
   echo "// 來源: contract/openapi.yaml"
-  echo "// 重新生成: npm run gen:types"
+  echo "// 重新生成: pnpm gen:types"
   cat generated/api.ts
 } > "$tmp"
 mv "$tmp" generated/api.ts
