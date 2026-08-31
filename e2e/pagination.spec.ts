@@ -11,7 +11,7 @@
  */
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { startServer, type TestServer } from './server.js';
 import type { components, operations } from '../generated/api.js';
 
 type Project = components['schemas']['Project'];
@@ -19,22 +19,12 @@ type ApiError = components['schemas']['Error'];
 type ListResponse =
   operations['listProjects']['responses']['200']['content']['application/json'];
 
-const BASE = 'http://localhost:3998';
+const PORT = 3998;
+const BASE = `http://localhost:${PORT}`;
 const SEEDED = 25; // 刻意大於預設 limit(20),才驗得出預設值有生效。
 
-let server: ChildProcess;
-
-async function waitForServer(retries = 40): Promise<void> {
-  for (let i = 0; i < retries; i++) {
-    try {
-      await fetch(`${BASE}/projects`);
-      return;
-    } catch {
-      await new Promise((r) => setTimeout(r, 250));
-    }
-  }
-  throw new Error('backend 未在時限內啟動');
-}
+// undefined 是有意義的狀態:before() 失敗時 after() 沒有東西可收。
+let server: TestServer | undefined;
 
 async function list(query = ''): Promise<ListResponse> {
   const res = await fetch(`${BASE}/projects${query}`);
@@ -43,24 +33,26 @@ async function list(query = ''): Promise<ListResponse> {
 }
 
 before(async () => {
-  server = spawn('npx', ['tsx', 'backend/src/index.ts'], {
-    env: { ...process.env, PORT: '3998' },
-    stdio: 'ignore',
-  });
-  await waitForServer();
+  server = await startServer(PORT);
+
+  // 這次 spawn 出來的行程一定是空的 db。不是空的,就代表回應的是別人 ——
+  // 本檔的斷言全是精確筆數,對錯對象做斷言比測試失敗更糟(CR-004)。
+  assert.equal((await list()).total, 0, 'server 不乾淨,種子資料會被既有資料汙染');
 
   // 依序建立,名稱可辨識順序,用於驗證 offset 取到的是不同批資料。
   for (let i = 1; i <= SEEDED; i++) {
-    await fetch(`${BASE}/projects`, {
+    const res = await fetch(`${BASE}/projects`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: `分頁測試專案 ${String(i).padStart(2, '0')}` }),
     });
+    // 種子建不齊會變成筆數斷言紅一片,看不出真正的原因。
+    assert.equal(res.status, 201, `第 ${i} 筆種子資料建立失敗`);
   }
 });
 
-after(() => {
-  server?.kill();
+after(async () => {
+  await server?.stop();
 });
 
 describe('Projects API — 分頁', () => {
