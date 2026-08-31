@@ -14,7 +14,7 @@ description: agent-factory 的角色工作流程 —— 確認自己的角色、
 ## 1. 開工前
 
 ```bash
-npm run whoami
+pnpm whoami
 ```
 
 沒有角色就停下來問人,不要猜。角色決定你能寫哪些路徑,猜錯的代價是
@@ -41,7 +41,7 @@ npm run whoami
 cp change-requests/TEMPLATE.md change-requests/CR-00N.md
 ```
 
-必填欄位(`npm run check:cr` 會驗):
+必填欄位(`pnpm check:cr` 會驗):
 
 - `- **提出者**: <你的角色>`
 - `- **狀態**: proposed`(只有 architect 能改成 accepted / rejected)
@@ -55,7 +55,7 @@ CR-001 是好範例。
 ## 3. 送 PR 前
 
 ```bash
-npm run verify
+pnpm verify
 ```
 
 涵蓋 contract drift、CR 一致性、三個 scope 的 typecheck、e2e。全綠才送。
@@ -63,7 +63,7 @@ npm run verify
 再自己確認一次邊界:
 
 ```bash
-npm run check:scope <role> origin/main
+pnpm check:scope <role> origin/main
 ```
 
 ## 4. 送 PR 時
@@ -84,7 +84,7 @@ label 要誠實反映你這個 session 被指派的角色。掛一個「剛好�
 | Job | 常見原因 | 做法 |
 |---|---|---|
 | `scope` | 沒掛 label / 掛了多個 / 路徑越界 | 補上正確 label;越界就回到第 2 步開 CR |
-| `verify` → Contract drift | 改了 `contract/` 沒重新生成 | `npm run gen:types` 後 commit |
+| `verify` → Contract drift | 改了 `contract/` 沒重新生成 | `pnpm gen:types` 後 commit |
 | `verify` → CR consistency | CR 狀態與 `tasks.yaml` 對不上 | 修 CR 或請 architect 裁決 |
 | `verify` → Typecheck / E2E | 實作問題 | 修實作。**不准改 `e2e/`** 讓測試變綠 |
 

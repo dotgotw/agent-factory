@@ -20,7 +20,7 @@ e2e:      2 個型別錯誤
 
 ### ② Drift 會讓 CI 失敗
 
-`npm run check:drift` 重跑生成器並比對 diff。擋掉兩種常見死法:
+`pnpm check:drift` 重跑生成器並比對 diff。擋掉兩種常見死法:
 手改 `generated/`,以及改了 contract 卻忘記重新生成。
 
 驗證過:改 contract 未重新生成 → 離開碼 1。
@@ -57,10 +57,18 @@ change-requests/   所有角色皆可寫。contract 的唯一修改入口
 ## 跑起來
 
 ```bash
-npm install
-npm run verify        # drift + typecheck + e2e,全綠才算過
-npm run dev:backend   # localhost:3000
+corepack enable       # 一次就好,讓 Node 依 packageManager 欄位自動備妥 pnpm
+pnpm install
+pnpm verify           # drift + typecheck + e2e,全綠才算過
+pnpm dev:backend      # localhost:3000
 ```
+
+**沒裝 pnpm 會怎樣。** `package.json` 的 `packageManager` 欄位釘死 pnpm 版本,
+`corepack enable` 之後 Node 會自己備妥它。若跳過這一步,症狀是
+`.claude/hooks/session-start.sh` 在**每次開 session 時**靜默失敗 ——
+看起來像 Claude Code 壞了,實際上只是 pnpm 沒就位。
+
+遇到的時候修 corepack,**不要去關掉 hook**。
 
 ## 怎麼在這裡工作
 
@@ -96,7 +104,7 @@ echo backend > .claude/worktrees/backend/.claude/role
 cd .claude/worktrees/backend                            # ← 這一步就是「指派角色」
 git fetch origin && git checkout -b 我的分支 origin/main   # 從最新的 main 長出來
 # ...改 code
-npm run verify                                          # 全綠才送
+pnpm verify                                             # 全綠才送
 gh pr create --label agent:backend                      # label 必須跟資料夾的角色一致
 ```
 

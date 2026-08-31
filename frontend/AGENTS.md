@@ -15,4 +15,4 @@
 - Backend 尚未完成時,對著 contract 開發即可(可用 mock),不需等待。
 
 ## Done
-`npm run typecheck` 通過,對應 AC 的畫面行為完成。
+`pnpm typecheck` 通過,對應 AC 的畫面行為完成。

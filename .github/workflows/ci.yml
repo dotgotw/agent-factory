@@ -25,31 +25,35 @@ jobs:
         with:
           fetch-depth: 0
 
+      # pnpm 必須在 setup-node 之前 —— cache: pnpm 要靠它才找得到 store 路徑。
+      - uses: pnpm/action-setup@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
+          cache: pnpm
 
-      - run: npm ci
+      # --frozen-lockfile:lockfile 與 package.json 對不上就失敗,不要自作主張改。
+      - run: pnpm install --frozen-lockfile
 
       # ① Contract drift:重新生成型別,若與 commit 的版本不同就失敗。
       #    擋掉「手改 generated/」與「改了 contract 卻忘記重新生成」。
       - name: Contract drift
-        run: npm run check:drift
+        run: pnpm check:drift
 
       # ② CR 與 tasks.yaml 的一致性。
       #    CR 狀態是 markdown 文字,沒有 schema 保護,靠人眼看不出漂移。
       #    擋掉「CR 已 accepted 但任務還卡著」與非法的狀態寫法。
       - name: CR consistency
-        run: npm run check:cr
+        run: pnpm check:cr
 
       # ③ 三個 scope 各自 typecheck。contract 與實作不一致會在這裡爆。
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm typecheck
 
       # ④ 黑箱驗收測試。
       - name: E2E
-        run: npm run test:e2e
+        run: pnpm test:e2e
 
   scope:
     runs-on: ubuntu-latest
