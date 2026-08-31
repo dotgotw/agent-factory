@@ -39,7 +39,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /** 更新專案狀態(封存 / 取消封存) */
+        patch: operations["updateProject"];
         trace?: never;
     };
 }
@@ -62,6 +63,9 @@ export interface components {
         };
         CreateProjectRequest: {
             name: string;
+        };
+        UpdateProjectRequest: {
+            status: components["schemas"]["ProjectStatus"];
         };
         Error: {
             code: string;
@@ -158,6 +162,50 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description 找不到 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateProject: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                projectId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateProjectRequest"];
+            };
+        };
+        responses: {
+            /** @description OK,回傳更新後的專案 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description 驗證失敗(status 缺漏或不在 enum 內) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             /** @description 找不到 */

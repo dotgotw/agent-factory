@@ -64,10 +64,11 @@ tasks:
   - id: TASK-004
     title: 專案封存功能
     owner: backend
-    status: blocked
-    blocked_reason: "contract 尚未定義 PATCH /projects/{id};見 change-requests/CR-001.md"
+    # CR-001 已 accepted,PATCH /projects/{projectId} 就緒,解除阻擋。
+    status: todo
     depends_on: [TASK-002]
-    contract_refs: []
+    contract_refs:
+      - "openapi.yaml#/paths/~1projects~1{projectId}/patch"
     acceptance:
       - id: AC-007
         text: 封存後狀態變為 archived,且不出現在 status=active 的列表中

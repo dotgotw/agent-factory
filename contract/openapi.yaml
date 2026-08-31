@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Projects API
-  version: 2.0.0
+  version: 2.1.0
   description: |
     唯一 API 真相。Frontend 與 Backend 的型別皆由此檔生成。
     任何修改必須由 Architect 執行,並附帶一份 change-requests/CR-*.md。
@@ -102,6 +102,40 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+    patch:
+      operationId: updateProject
+      summary: 更新專案狀態(封存 / 取消封存)
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectRequest'
+      responses:
+        '200':
+          description: OK,回傳更新後的專案
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          description: 驗證失敗(status 缺漏或不在 enum 內)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: 找不到
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
 components:
   schemas:
@@ -135,6 +169,18 @@ components:
           type: string
           minLength: 1
           maxLength: 80
+
+    UpdateProjectRequest:
+      type: object
+      # status 刻意設為必填 —— 這個 body 目前只有一個欄位,設為選填的話
+      # `{}` 會變成一次「成功但什麼都沒做」的 PATCH,是靜默的錯誤來源。
+      # 日後若新增其他可更新欄位,把 status 移出 required 即可 —— 放寬
+      # request 的限制對既有 client 是相容的,方向是安全的那一邊。
+      # 見 change-requests/CR-001.md。
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/ProjectStatus'
 
     Error:
       type: object
