@@ -7,36 +7,23 @@
  */
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { startServer, type TestServer } from './server.js';
 import type { components } from '../generated/api.js';
 
 type Project = components['schemas']['Project'];
 
-const BASE = 'http://localhost:3999';
-let server: ChildProcess;
+const PORT = 3999;
+const BASE = `http://localhost:${PORT}`;
 
-async function waitForServer(retries = 40): Promise<void> {
-  for (let i = 0; i < retries; i++) {
-    try {
-      await fetch(`${BASE}/projects`);
-      return;
-    } catch {
-      await new Promise((r) => setTimeout(r, 250));
-    }
-  }
-  throw new Error('backend 未在時限內啟動');
-}
+// undefined 是有意義的狀態:before() 失敗時 after() 沒有東西可收。
+let server: TestServer | undefined;
 
 before(async () => {
-  server = spawn('npx', ['tsx', 'backend/src/index.ts'], {
-    env: { ...process.env, PORT: '3999' },
-    stdio: 'ignore',
-  });
-  await waitForServer();
+  server = await startServer(PORT);
 });
 
-after(() => {
-  server?.kill();
+after(async () => {
+  await server?.stop();
 });
 
 describe('Projects API', () => {
