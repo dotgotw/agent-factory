@@ -50,8 +50,12 @@
 ## 本 session 是哪個角色
 
 ```bash
-pnpm whoami
+pnpm role
 ```
+
+**不叫 `whoami`。** 那是 pnpm/npm 的內建子指令,會優先於 package.json 的同名
+script:`pnpm whoami` 不會跑到這裡,而是去查 registry 的登入狀態,吐一則跟角色
+毫無關係的 `ENEEDAUTH`。script 撞到內建指令,錯誤訊息就會騙人 —— 別改回去。
 
 角色的來源有兩個,`AGENT_ROLE` 環境變數優先於 `.claude/role` 檔案(不進版控)。
 沒有角色就別動手。
@@ -81,7 +85,7 @@ pnpm whoami
 ## 指令
 
 ```bash
-pnpm whoami        # 我是誰、我能寫哪裡
+pnpm role          # 我是誰、我能寫哪裡
 pnpm gen:types     # contract -> 型別
 pnpm typecheck     # 三個 scope 各自 typecheck
 pnpm test:e2e      # 黑箱驗收測試
