@@ -140,7 +140,25 @@ gh pr create --base 第一棒的分支名 --label agent:qa
 
 CI 比對邊界時看的是你的目標分支(`.github/workflows/ci.yml` 裡的
 `check-scope.mjs "$ROLE" "origin/$base_ref"`),所以兩張 PR 可以疊著跑。
-第一張合併後,GitHub 會自動把第二張的目標改成 main。
+
+**合併時有一個會咬人的地方:由下往上合,而且合完第一張要先確認第二張的
+base 真的變成 main,再按下去。**
+
+第一張合併後 GitHub 會自動把第二張的目標改成 main,但那需要幾秒。
+在它改完之前按下合併,第二張會併進一個**已經沒人要的分支** ——
+GitHub 顯示「已合併」,CI 也是綠的,但改動根本沒進 main。
+
+真的發生過:#28 在 17:02:35 併進 main,#29 在 43 秒後併進了
+`claude/pnpm-scope-lockfile`,整個 pnpm 遷移就這樣卡在半路。
+
+合完之後養成習慣檢查一次:
+
+```bash
+git fetch origin && git log --oneline origin/main -3
+```
+
+看不到你的 commit 就是沒進去。補救方式是從 `origin/main` 開一個新分支、
+`git cherry-pick` 那個 commit,再開一張以 main 為目標的 PR。
 
 ## 一個刻意留下的狀態
 
