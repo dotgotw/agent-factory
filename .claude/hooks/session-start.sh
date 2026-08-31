@@ -8,9 +8,9 @@ set -uo pipefail
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
 
 # Claude Code on the web 每次都是全新 container,沒有 node_modules 就沒辦法
-# 跑 npm run verify。本機開發不碰,交給開發者自己管。
+# 跑 pnpm verify。本機開發不碰,交給開發者自己管。
 if [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] && [ ! -d node_modules ]; then
-  npm install >/dev/null 2>&1 || true
+  pnpm install --frozen-lockfile >/dev/null 2>&1 || true
 fi
 
 echo "## agent-factory 角色"

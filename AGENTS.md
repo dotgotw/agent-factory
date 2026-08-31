@@ -13,11 +13,11 @@
 
 ## 鐵則
 
-1. **`generated/` 不可手動編輯。** 改 `contract/openapi.yaml`,然後 `npm run gen:types`。
+1. **`generated/` 不可手動編輯。** 改 `contract/openapi.yaml`,然後 `pnpm gen:types`。
 2. **只有 Architect 能改 `contract/`。** 其他角色如需變更,在 `change-requests/` 開 CR。
 3. **實作角色不可改 `e2e/`。** 測試不過就是不過,不能把測試改綠。
 4. **實作角色不可改 `.github/` 與 `scripts/`。** 規則的執行者不受被約束者修改。
-5. 送出前必須 `npm run verify` 全綠。
+5. 送出前必須 `pnpm verify` 全綠。
 
 ## 角色與可寫路徑
 
@@ -50,7 +50,7 @@
 ## 本 session 是哪個角色
 
 ```bash
-npm run whoami
+pnpm whoami
 ```
 
 角色的來源有兩個,`AGENT_ROLE` 環境變數優先於 `.claude/role` 檔案(不進版控)。
@@ -81,10 +81,10 @@ npm run whoami
 ## 指令
 
 ```bash
-npm run whoami        # 我是誰、我能寫哪裡
-npm run gen:types     # contract -> 型別
-npm run typecheck     # 三個 scope 各自 typecheck
-npm run test:e2e      # 黑箱驗收測試
-npm run verify        # 上面全部 + drift 檢查
-npm run check:scope <role> <base-ref>
+pnpm whoami        # 我是誰、我能寫哪裡
+pnpm gen:types     # contract -> 型別
+pnpm typecheck     # 三個 scope 各自 typecheck
+pnpm test:e2e      # 黑箱驗收測試
+pnpm verify        # 上面全部 + drift 檢查
+pnpm check:scope <role> <base-ref>
 ```

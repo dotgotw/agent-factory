@@ -14,4 +14,4 @@
 - 發現 contract 有問題時**不要自己改**,在 `change-requests/` 開 CR 並停下該任務。
 
 ## Done
-`npm run verify` 全綠,且負責任務的 AC 對應 e2e 測試通過。
+`pnpm verify` 全綠,且負責任務的 AC 對應 e2e 測試通過。
