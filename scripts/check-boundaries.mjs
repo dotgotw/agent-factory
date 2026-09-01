@@ -96,7 +96,12 @@ const leaks = [];
 for (const c of CASES) {
   const fixturePath = join(rootDir, c.fixture);
   if (existsSync(fixturePath)) {
-    console.error(`❌ ${c.fixture} 已經存在 —— 不覆蓋別人的檔案。先確認它不是殘留物再重跑。`);
+    console.error(
+      `❌ ${c.fixture} 已經存在 —— 不覆蓋別人的檔案。\n` +
+        `   兩種可能:同一個目錄裡有另一個 check:boundaries 正在跑(fixture 是共用的檔案,\n` +
+        `   不同角色各自的 worktree 不會互撞,同一個目錄跑兩次會),或是上一次被硬殺留下的\n` +
+        `   殘留物。確認是後者再刪掉重跑。`,
+    );
     process.exit(2);
   }
 
