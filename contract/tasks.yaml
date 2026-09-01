@@ -66,8 +66,10 @@ tasks:
   - id: TASK-003
     title: 專案列表畫面
     owner: frontend
-    # AC-005/AC-006 是 manual 驗收,而人工驗收沒有紀錄 —— 實作完成但還沒被
-    # 驗過,那就是 review 不是 done。見 change-requests/CR-006.md。
+    # AC-005/AC-006 已於 2026-09-01 人工驗收,紀錄見下面的 verified_record
+    # (制度的第一筆)。仍是 review 而不是 done,原因換了:CR-011 裁決要求
+    # check:ac 先能驗這筆紀錄,規則到位之前翻 done 等於這個狀態沒有被任何
+    # 機制把關過 —— 那正是 CR-006 與 CR-011 兩張連續在講的同一件事。
     status: review
     depends_on: []   # 對 contract 開發,不需等 backend
     contract_refs:
@@ -77,10 +79,20 @@ tasks:
         text: 顯示名稱、狀態、建立日期
         verified_by: manual
         verified_note: 黑箱 e2e 只 spawn backend 發 HTTP,打不到畫面;見 CR-006
+        verified_record:
+          at: 2026-09-01
+          who: zozo0526
+          commit: 533874a
+          saw: 用 pnpm dev:frontend 建立「ruggetch v2」後,列表該筆同時顯示名稱 ruggetch v2、狀態 ACTIVE、建立日期 2026/9/1
       - id: AC-006
         text: 無資料時顯示空狀態
         verified_by: manual
         verified_note: 空狀態是純畫面的條件,改寫成 API 層的斷言就不是原本那條 AC 了
+        verified_record:
+          at: 2026-09-01
+          who: zozo0526
+          commit: 533874a
+          saw: backend 為 in-memory,剛啟動尚未建立任何專案時,列表區塊沒有列出任何項目
 
   - id: TASK-004
     title: 專案封存功能
