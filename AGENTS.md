@@ -20,7 +20,12 @@
 5. **角色不得寫入宣告自己邊界的檔案。** `AGENTS.md`、`tsconfig.json`、
    `package.json` 說的是「這個角色被什麼約束、能 import 什麼」,一律歸 infra
    —— 把鎖裝上,鑰匙不能留在被鎖的人口袋裡。見 ADR-003。
-6. 送出前必須 `pnpm verify` 全綠。
+6. 送出前必須 `pnpm verify` 全綠 —— 但**幽靈依賴那半邊的權威在 CI,不在本機**。
+   模組解析會沿目錄樹往上走,所以在巢狀 worktree(`.claude/worktrees/<role>`)
+   裡,`check:boundaries` 會把「應該解析不到」的案例降級成 ⚠️ 並通過。
+   那代表「這裡問不出答案」,不代表答案是好的。路徑逃逸那半邊(`rootDir`)
+   與 `node_modules` 無關,本機一樣有效。見 ADR-003 的 #46 補充。
+   **看到 ⚠️ 不可放寬 fixture** —— 那是把鎖拆掉,不是修檢查。
 
 ## 角色與可寫路徑
 
