@@ -13,7 +13,18 @@ type ListResponse =
 // MVP 用記憶體儲存;正式版換成 DB 時,型別不變。
 const db = new Map<string, Project>();
 
-export const projectsRouter = Router();
+/**
+ * 路由帶完整路徑(而不是掛在 '/projects' 底下用 '/'),而且 router 自己
+ * 帶上這兩個選項 —— 這是 AC-018 唯一有效的做法。
+ *
+ * app.set('strict routing', true) 管不到掛載:express 的 app.use() 建 Layer
+ * 時把 strict 寫死成 false,而且 /projects 與 /projects/ 傳進子 router 的
+ * 剩餘路徑都會被正規化成 '/',子 router 再嚴格也分辨不出來。
+ * 把完整路徑寫在這裡,strict 才有東西可以嚴格。
+ *
+ * Router 的選項不會從 app 繼承,所以兩個設定要各寫一次。
+ */
+export const projectsRouter = Router({ caseSensitive: true, strict: true });
 
 /**
  * 解析選填的整數 query 參數。
@@ -118,7 +129,7 @@ function unknownFieldsMessage(unknown: string[], allowed: object): string {
   );
 }
 
-projectsRouter.get('/', (req: Request, res: Response<ListResponse | ApiError>) => {
+projectsRouter.get('/projects', (req: Request, res: Response<ListResponse | ApiError>) => {
   const status = statusParam(req.query.status);
 
   // 預設值與範圍皆依 contract 的 schema(limit: 1..100 預設 20;offset: ≥0 預設 0)。
@@ -153,7 +164,7 @@ projectsRouter.get('/', (req: Request, res: Response<ListResponse | ApiError>) =
 });
 
 projectsRouter.post(
-  '/',
+  '/projects',
   (req: Request, res: Response<Project | ApiError>) => {
     const body = (req.body ?? {}) as Partial<CreateProjectRequest>;
 
@@ -203,7 +214,7 @@ projectsRouter.post(
 );
 
 projectsRouter.get(
-  '/:projectId',
+  '/projects/:projectId',
   (req: Request, res: Response<Project | ApiError>) => {
     const projectId = req.params.projectId;
     const project = projectId ? db.get(projectId) : undefined;
@@ -217,7 +228,7 @@ projectsRouter.get(
 );
 
 projectsRouter.patch(
-  '/:projectId',
+  '/projects/:projectId',
   async (req: Request, res: Response<Project | ApiError>) => {
     const body = (req.body ?? {}) as Partial<UpdateProjectRequest>;
 
