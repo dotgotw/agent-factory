@@ -133,6 +133,39 @@ CR-999: accepted
 這與 ADR-002 前提二是同一個形狀:放寬一處的保證,由另一處的檢查承擔,
 那個檢查就必須是 required。
 
+#### 補充(#46 實作後):這個檢查在哪裡問得出答案
+
+`check:boundaries` 的完整性取決於 checkout **有沒有上層 `node_modules`**。
+模組解析會沿目錄樹往上走,而本機的角色 worktree 位在
+`.claude/worktrees/<role>`,上層就是主 checkout —— 於是「frontend 應該解析不到
+`express`」這個問題在那裡問不出答案。三組實測:
+
+| 環境 | 結果 |
+|---|---|
+| 巢狀 worktree(`.claude/worktrees/architect`) | **2/3**,`express` 解析到主 checkout 的 `node_modules`,降級為 ⚠️ 並 exit 0 |
+| 乾淨複本(不在任何 checkout 底下) | **3/3** |
+| CI(`/home/runner/work/...`) | **3/3** |
+
+所以幽靈依賴那半邊的權威在 CI。**鐵則 5 的「送出前 `pnpm verify` 全綠」對這半邊
+不再是充分證據** —— 本機綠只代表「這裡問不出答案」,不代表「答案是好的」。
+路徑逃逸那半邊(`rootDir`)與 `node_modules` 無關,本機一樣有效。
+
+降級不會遮住真的破洞,這點實測過:把 `express` 加進 `frontend/package.json`
+之後,它解析到 **repo 之內**,檢查照樣 exit 1 並印出解析到哪裡。
+⚠️ 與 ❌ 的分界是「解析到 repo 外還是 repo 內」,不是「有沒有錯誤碼」。
+
+要守住的耦合,與 ADR-002 前提二同一個形狀:
+
+> **CI 的 checkout 必須沒有上層 `node_modules`。** 哪天 CI 改成在巢狀目錄下跑,
+> 這個檢查會降級成警告並通過 —— 綠燈,但什麼都沒驗到,而且不會有任何一條
+> 紅線提醒你。
+
+還有一條不得違反的:**看到 ⚠️ 不可放寬 fixture。** 那是把鎖拆掉,不是修檢查。
+
+偵測手法本身(`--traceResolution` 比對解析位置,而不是複製到 repo 之外再跑)
+**不寫進本 ADR** —— 那是工具選型,歸 infra。這裡記的只有「這個保證在哪裡成立」,
+因為那會改變讀者對本機綠燈的信任程度。
+
 ## 理由
 
 死結不在文件寫得不夠清楚,在**文件是唯一的執行者**。`e2e/AGENTS.md` 那句話
