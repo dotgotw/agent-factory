@@ -103,6 +103,7 @@ echo backend > .claude/worktrees/backend/.claude/role
 ```bash
 cd .claude/worktrees/backend                            # ← 這一步就是「指派角色」
 git fetch origin && git checkout -b 我的分支 origin/main   # 從最新的 main 長出來
+pnpm install                                            # 見下:node_modules 不進版控
 # ...改 code
 pnpm verify                                             # 全綠才送
 gh pr create --label agent:backend                      # label 必須跟資料夾的角色一致
@@ -110,6 +111,17 @@ gh pr create --label agent:backend                      # label 必須跟資料�
 
 **沒有「切到 main 再 pull」這個步驟。** 所有 worktree 共用同一個 `.git`,
 `git fetch` 在任何一個資料夾跑一次,全部立刻看得到最新的 main。
+
+**每個 checkout 都要自己 `pnpm install`。** `node_modules/` 不進版控,而
+`git pull` 只會把 `pnpm-workspace.yaml` 與各 package 的 `package.json` 拉下來,
+不會幫你建連結。少了這一步的症狀是 tsc 說
+
+```
+Cannot find module '@af/contract'
+```
+
+—— 那句話看起來像 workspace 設定壞了,實際上設定沒問題,只是這個目錄沒裝過。
+主 checkout 特別容易中:平常不在那裡開發,拉完就直接跑指令。
 
 ### 三條一定會撞到的規矩
 

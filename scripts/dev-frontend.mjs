@@ -114,6 +114,31 @@ function fail(msg) {
   process.exit(1);
 }
 
+// ⓪ 先確認這個 checkout 的 workspace 真的裝好了。
+//
+//    不做這一步的話,最常見的失敗會長成一句誤導的話:tsc 吐
+//    「Cannot find module '@af/contract'」,而那看起來像 workspace 設定壞了,
+//    實際上多半只是這個 checkout 從來沒跑過 pnpm install —— 例如剛把
+//    pnpm-workspace.yaml 拉進來的主 checkout。node_modules 不進版控,
+//    git pull 不會幫你裝。
+//
+//    ADR-003 的代價那節也點過另一種:gen:types 失敗時 generated/ 是空的,
+//    症狀同樣是「找不到 @af/contract」,但真正的原因在上一步。
+const contractLink = join(rootDir, 'frontend', 'node_modules', '@af', 'contract');
+if (!existsSync(contractLink)) {
+  const generatedMissing = !existsSync(join(rootDir, 'generated', 'api.ts'));
+  fail(
+    `這個 checkout 的 workspace 還沒裝好 —— 找不到 ${contractLink}。\n` +
+      (generatedMissing
+        ? '   generated/api.ts 也不在,先跑 pnpm gen:types(它是 @af/contract 的內容)。\n'
+        : '') +
+      '   多半是這個目錄沒跑過 pnpm install。node_modules 不進版控,git pull 不會幫你裝:\n\n' +
+      '     pnpm install\n\n' +
+      '   不先擋下來的話,下一句會是 tsc 的「Cannot find module \'@af/contract\'」,\n' +
+      '   那句話會把人帶去查 workspace 設定,而設定沒有問題。',
+  );
+}
+
 // ① 編譯。frontend/tsconfig.json 是 noEmit,這裡用 CLI 覆寫 —— 不改那個檔案,
 //    因為它同時是邊界的宣告(rootDir),不該為了 dev 工具動它。
 console.log('編譯 frontend…');
