@@ -53,6 +53,13 @@ jobs:
       - name: CR consistency
         run: pnpm check:cr
 
+      # ②' AC 覆蓋率。任務標成 done 時,它宣告 verified_by: e2e 的 AC 必須
+      #     在 e2e/ 裡找得到編號。這種漂移的方向跟別的相反:少一條測試不會讓
+      #     CI 變紅,它讓 CI 變得更綠,所以沒有這一步就沒有任何東西在看。
+      #     規格見 change-requests/CR-006.md 的裁決。
+      - name: AC coverage
+        run: pnpm check:ac
+
       # ③ 三個 scope 各自 typecheck。contract 與實作不一致會在這裡爆。
       - name: Typecheck
         run: pnpm typecheck
