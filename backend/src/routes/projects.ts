@@ -4,6 +4,7 @@ import type { components, operations } from '@af/contract';
 // 型別全部來自 contract,不手寫。
 type Project = components['schemas']['Project'];
 type CreateProjectRequest = components['schemas']['CreateProjectRequest'];
+type UpdateProjectRequest = components['schemas']['UpdateProjectRequest'];
 type ApiError = components['schemas']['Error'];
 type ListResponse =
   operations['listProjects']['responses']['200']['content']['application/json'];
@@ -21,6 +22,20 @@ function intParam(raw: unknown, fallback: number): number | null {
   if (raw === undefined) return fallback;
   if (typeof raw !== 'string' || !/^\d+$/.test(raw)) return null;
   return Number(raw);
+}
+
+/**
+ * 合法的 status 值。用 Record<Project['status'], true> 而不是字串陣列 ——
+ * contract 日後新增 enum 值時,這裡會因為少一個鍵而 typecheck 紅,
+ * 而不是安靜地把新值當成非法輸入擋掉。
+ */
+const PROJECT_STATUSES: Record<Project['status'], true> = {
+  active: true,
+  archived: true,
+};
+
+function isProjectStatus(value: unknown): value is Project['status'] {
+  return typeof value === 'string' && Object.hasOwn(PROJECT_STATUSES, value);
 }
 
 projectsRouter.get('/', (req: Request, res: Response<ListResponse | ApiError>) => {
@@ -89,5 +104,41 @@ projectsRouter.get(
         .json({ code: 'NOT_FOUND', message: '找不到該專案' });
     }
     res.json(project);
+  },
+);
+
+projectsRouter.patch(
+  '/:projectId',
+  (req: Request, res: Response<Project | ApiError>) => {
+    const body = (req.body ?? {}) as Partial<UpdateProjectRequest>;
+
+    // 先驗 body,再查資料。兩者都是呼叫端的錯,但格式錯是 client 程式的 bug
+    // ——換一個 id 還是會錯——而 404 只是這一筆資料的狀態。先講會一直重演的那個。
+    if (body.status === undefined) {
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: 'status 為必填',
+      });
+    }
+    if (!isProjectStatus(body.status)) {
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: `status 必須是 ${Object.keys(PROJECT_STATUSES).join(' / ')} 其中之一`,
+      });
+    }
+
+    const projectId = req.params.projectId;
+    const project = projectId ? db.get(projectId) : undefined;
+    if (!project) {
+      return res
+        .status(404)
+        .json({ code: 'NOT_FOUND', message: '找不到該專案' });
+    }
+
+    // 展開既有專案而不是只寫 status —— ownerEmail 這類欄位不該因為一次
+    // 封存就消失。contract 只允許改 status,其餘欄位原封不動。
+    const updated: Project = { ...project, status: body.status };
+    db.set(project.id, updated);
+    res.json(updated);
   },
 );
