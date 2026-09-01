@@ -200,7 +200,9 @@ tasks:
     # 沒有路徑,於是 client 遲早會送 PATCH {"ownerEmail": ...}。
     #
     # contract 已改(additionalProperties: false),這張是把它實作出來。
-    status: todo
+    # 實作 #71,AC-015 的 e2e 測試 #74。實測 POST 與 PATCH 兩處都擋,
+    # 400 + Error schema,訊息還點名了是哪個欄位。狀態進 done。
+    status: done
     depends_on: [TASK-005]
     contract_refs:
       - "openapi.yaml#/components/schemas/UpdateProjectRequest"
@@ -226,7 +228,10 @@ tasks:
     # 修法是一個 express 錯誤處理器,把 body-parser 的解析錯誤轉成
     # { code: 'VALIDATION_ERROR', message: ... }。不需要新的 code 值。
     # contract 不必改 —— 契約本來就是這樣寫的,是實作沒有做到。
-    status: todo
+    #
+    # 實作 #72,實測壞 JSON 現在回 400 + application/json 的 Error。
+    # review 而不是 done —— AC-016 還沒有測試。
+    status: review
     depends_on: [TASK-008]
     contract_refs:
       - "openapi.yaml#/components/schemas/Error"
