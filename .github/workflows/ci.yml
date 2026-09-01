@@ -64,6 +64,14 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # ③' 依賴邊界。對三個刻意違規的 fixture 跑 tsc,期望它紅。
+      #     ADR-003 前提條件二:那三條錯誤若只在遷移當天跑過一次,這個邊界的
+      #     壽命就是一次。殘留的洞在 root —— root package.json 裡的任何依賴
+      #     對每個 package 都解析得到,沒有機制阻止有人把 express 加回去,
+      #     而那會讓 frontend 那半邊**靜默**復原成遷移前的樣子。
+      - name: Dependency boundaries
+        run: pnpm check:boundaries
+
       # ④ 黑箱驗收測試。
       - name: E2E
         run: pnpm test:e2e
