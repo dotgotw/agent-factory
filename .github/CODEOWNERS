@@ -32,3 +32,23 @@
 
 # 自動生成,不該有人手改
 /generated/     @zozo0526
+
+# 宣告邊界的檔案(ADR-003 前提條件一)
+#
+# 這些檔案住在被約束者的目錄底下(e2e/tsconfig.json 在 qa 的 e2e/ 裡),
+# scope.json 的「最長前綴勝出」已經把擁有權判給 infra,但那只擋得住
+# 誠實宣告角色的 PR:check-scope 驗的是「diff 符不符合宣告的角色」,
+# 驗不了那個宣告是不是真的。一張把 label 換成 agent:infra 的 PR 就繞過了。
+#
+# 所以「宣告某個角色被什麼約束」的檔案跟規則本身同一級,要人類點頭。
+# 有些檔案還不存在(CR-009 的後續步驟才會建),先寫在這裡不會有副作用。
+/backend/tsconfig.json    @zozo0526
+/backend/package.json     @zozo0526
+/backend/AGENTS.md        @zozo0526
+/frontend/tsconfig.json   @zozo0526
+/frontend/package.json    @zozo0526
+/frontend/AGENTS.md       @zozo0526
+/e2e/tsconfig.json        @zozo0526
+/e2e/package.json         @zozo0526
+/e2e/AGENTS.md            @zozo0526
+/pnpm-workspace.yaml      @zozo0526

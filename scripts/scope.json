@@ -1,5 +1,10 @@
 {
   "_comment": "每個角色可寫入的路徑。CI 依此擋 PR。AGENTS.md 是給 Agent 看的請求,本檔是給你看的保證。_derived 是衍生產物:沒有角色擁有它,內容的權威是 guard 指定的檢查,見 contract/decisions/ADR-002-derived-artifacts-guarded-by-regeneration.md。",
+  "_matching": {
+    "note": "比對規則,見 ADR-003 前提條件一。三句話:(1) 帶結尾斜線的條目是目錄前綴,不帶的是精確檔名;(2) roles 之內最長前綴勝出 —— 一個檔案只有一個擁有者,明列的檔案勝過角色的目錄前綴(e2e/tsconfig.json 勝過 e2e/);(3) _everyone 與 _derived 是加法,不參與長度比較。",
+    "trap": "若讓 _everyone 參與最長前綴比較,change-requests/ 會塌縮成單一角色(五個角色的前綴等長,勝負取決於物件鍵順序),其餘四個角色從此開不了 CR —— 那是被 scope 擋下時唯一的合法出口。加法的歸加法。",
+    "conflicts": "兩個角色不得列出同一條路徑,roles 也不得與 _everyone / _derived 重疊。撞名的勝負會取決於鍵順序,是會靜默漂移的東西,故 loadScope() 直接判錯。"
+  },
   "_everyone": ["change-requests/"],
   "_derived": {
     "generated/": {
@@ -22,10 +27,14 @@
         "CLAUDE.md",
         "package.json",
         "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
         "tsconfig.json",
         "backend/tsconfig.json",
         "frontend/tsconfig.json",
         "e2e/tsconfig.json",
+        "backend/package.json",
+        "frontend/package.json",
+        "e2e/package.json",
         "Dockerfile",
         "docker-compose.yml",
         ".env.example",
@@ -35,9 +44,10 @@
         "AGENTS.md",
         "backend/AGENTS.md",
         "frontend/AGENTS.md",
+        "e2e/AGENTS.md",
         "infra/"
       ],
-      "note": "規則的執行者。實作角色不得改動 CI,否則測試紅了可以直接把檢查拿掉。同理,AGENTS.md 由 infra 保管 —— 角色不得改寫自己被賦予的規則。"
+      "note": "規則的執行者。實作角色不得改動 CI,否則測試紅了可以直接把檢查拿掉。同理,一個角色不得寫入「宣告該角色能 import 什麼、被什麼約束」的檔案 —— AGENTS.md、tsconfig.json、package.json 皆屬此類,見 ADR-003。"
     },
     "backend": {
       "allow": ["backend/src/"],
@@ -49,7 +59,7 @@
     },
     "qa": {
       "allow": ["e2e/"],
-      "note": "只讀驗收條件與 contract,不讀實作"
+      "note": "只讀驗收條件與 contract,不讀實作。e2e/ 底下宣告邊界的檔案(tsconfig.json、package.json、AGENTS.md)歸 infra"
     }
   }
 }
