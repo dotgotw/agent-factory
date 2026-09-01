@@ -149,6 +149,27 @@ cd /tmp/cleanroom && pnpm install --frozen-lockfile && pnpm verify
 **3. 被 scope 擋下來時不要繞。** 去 `change-requests/` 開一張 CR 說明你需要什麼,
 由 Architect 裁決。這條路徑是整個設計的核心,見下一節。
 
+### 人工驗收怎麼做
+
+`contract/tasks.yaml` 裡標 `verified_by: manual` 的 AC,意思是**由人看過**,
+不是「不必驗收」。今天只有 TASK-003 的 AC-005/AC-006 是這一類。
+
+```bash
+pnpm dev:frontend
+```
+
+它會編譯 frontend、把 backend 起在另一個 port、開一個同源的頁面把兩者接起來。
+自己挑空的 port,不跟任何服務搶。
+
+- **AC-006(無資料時顯示空狀態)** —— 剛啟動時 backend 是空的(in-memory),
+  打開就是這個狀態。
+- **AC-005(顯示名稱、狀態、建立日期)** —— 用畫面上的表單建一筆,看列表那一列。
+
+看完之後**留下紀錄**(誰、什麼時候、看到什麼),再請 architect 把 TASK-003
+從 `review` 改成 `done`。紀錄要放哪目前沒有欄位,見 `change-requests/`。
+
+這支是驗收用的 harness,不是產品:HTML 在腳本裡,`frontend/src/` 沒有被改動。
+
 ### 跨角色的改動:拆,但不用排隊
 
 拆成多張 PR 是必要的,但**第二棒不必等第一棒合併**。
