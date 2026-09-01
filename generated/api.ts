@@ -109,6 +109,21 @@ export interface operations {
                     };
                 };
             };
+            /**
+             * @description 查詢參數驗證失敗。limit 不在 1..100、offset 為負數,
+             *     或 status 不在 ProjectStatus 的 enum 內。
+             *
+             *     status 給空字串等同未帶此參數(不篩選),不是驗證失敗 ——
+             *     client 無條件串上 `&status=` 是常見寫法,為此回 400 不划算。
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     createProject: {
