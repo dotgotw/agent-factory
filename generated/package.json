@@ -1,0 +1,13 @@
+{
+  "_comment": "⚠️  AUTO-GENERATED — 請勿手動修改。由 scripts/gen-types.sh 產出,內容的權威是 pnpm check:drift。見 contract/decisions/ADR-002-derived-artifacts-guarded-by-regeneration.md",
+  "name": "@af/contract",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./api.ts",
+      "default": "./api.ts"
+    }
+  }
+}
