@@ -66,11 +66,10 @@ tasks:
   - id: TASK-003
     title: 專案列表畫面
     owner: frontend
-    # AC-005/AC-006 已於 2026-09-01 人工驗收,紀錄見下面的 verified_record
-    # (制度的第一筆)。仍是 review 而不是 done,原因換了:CR-011 裁決要求
-    # check:ac 先能驗這筆紀錄,規則到位之前翻 done 等於這個狀態沒有被任何
-    # 機制把關過 —— 那正是 CR-006 與 CR-011 兩張連續在講的同一件事。
-    status: review
+    # AC-005/AC-006 於 2026-09-01 人工驗收,紀錄見下面的 verified_record
+    # (制度的第一筆)。#54 讓 check:ac 真的驗得到那筆紀錄之後才翻 done ——
+    # 這個 done 是第一個「被機制看過」的 manual done,見 CR-011 裁決。
+    status: done
     depends_on: []   # 對 contract 開發,不需等 backend
     contract_refs:
       - "openapi.yaml#/components/schemas/Project"
@@ -92,7 +91,7 @@ tasks:
           at: 2026-09-01
           who: zozo0526
           commit: 533874a
-          saw: backend 為 in-memory,剛啟動尚未建立任何專案時,列表區塊沒有列出任何項目
+          saw: 剛啟動、尚未建立任何專案時,列表位置顯示斜體的「尚無專案」四個字(不是空白區塊)
 
   - id: TASK-004
     title: 專案封存功能
