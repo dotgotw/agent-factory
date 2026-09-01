@@ -210,3 +210,28 @@ tasks:
         text: POST 或 PATCH 的 body 出現 schema 未定義的欄位時回 400,不靜默忽略
         verified_by: e2e
 
+  - id: TASK-009
+    title: 壞掉的 JSON 也要回 Error schema,不要回 express 的 HTML
+    owner: backend
+    # 裁決 CR-012 時實測到的,不是 qa 報的:body 送一段語法錯誤的 JSON,
+    # express 的 body-parser 會丟出來,預設錯誤處理器回一個 HTML 頁面。
+    #
+    #   POST /projects   body: {"name":        → 400  content-type: text/html
+    #   PATCH /projects/xyz  body: {oops       → 400  content-type: text/html
+    #
+    # 狀態碼是對的,但 contract 說這個 400 的 content 是 application/json 的
+    # Error —— 也就是說這條路徑上 API 違反自己的契約。CR-012 讓它更刺眼:
+    # 一個回 HTML 的回應根本給不出 code。
+    #
+    # 修法是一個 express 錯誤處理器,把 body-parser 的解析錯誤轉成
+    # { code: 'VALIDATION_ERROR', message: ... }。不需要新的 code 值。
+    # contract 不必改 —— 契約本來就是這樣寫的,是實作沒有做到。
+    status: todo
+    depends_on: [TASK-008]
+    contract_refs:
+      - "openapi.yaml#/components/schemas/Error"
+    acceptance:
+      - id: AC-016
+        text: body 為語法錯誤的 JSON 時回 400,且 body 是 Error schema(content-type 為 application/json)
+        verified_by: e2e
+
