@@ -106,7 +106,8 @@ export interface components {
             status: components["schemas"]["ProjectStatus"];
         };
         Error: {
-            code: string;
+            /** @enum {string} */
+            code: "VALIDATION_ERROR" | "NOT_FOUND";
             message: string;
         };
     };
@@ -153,6 +154,8 @@ export interface operations {
              *
              *     status 給空字串等同未帶此參數(不篩選),不是驗證失敗 ——
              *     client 無條件串上 `&status=` 是常見寫法,為此回 400 不划算。
+             *
+             *     code 一律為 `VALIDATION_ERROR`。
              */
             400: {
                 headers: {
@@ -186,7 +189,7 @@ export interface operations {
                     "application/json": components["schemas"]["Project"];
                 };
             };
-            /** @description 驗證失敗(name 不合規,或 body 出現未定義的欄位) */
+            /** @description 驗證失敗(name 不合規,或 body 出現未定義的欄位)。code 為 `VALIDATION_ERROR`。 */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -217,7 +220,7 @@ export interface operations {
                     "application/json": components["schemas"]["Project"];
                 };
             };
-            /** @description 找不到 */
+            /** @description 找不到。code 為 `NOT_FOUND`。 */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -252,7 +255,7 @@ export interface operations {
                     "application/json": components["schemas"]["Project"];
                 };
             };
-            /** @description 驗證失敗(status 缺漏、不在 enum 內,或 body 出現未定義的欄位) */
+            /** @description 驗證失敗(status 缺漏、不在 enum 內,或 body 出現未定義的欄位)。code 為 `VALIDATION_ERROR`。 */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -261,7 +264,7 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
-            /** @description 找不到 */
+            /** @description 找不到。code 為 `NOT_FOUND`。 */
             404: {
                 headers: {
                     [name: string]: unknown;

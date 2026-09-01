@@ -66,6 +66,8 @@ paths:
 
             status 給空字串等同未帶此參數(不篩選),不是驗證失敗 ——
             client 無條件串上 `&status=` 是常見寫法,為此回 400 不划算。
+
+            code 一律為 `VALIDATION_ERROR`。
           content:
             application/json:
               schema:
@@ -87,7 +89,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Project'
         '400':
-          description: 驗證失敗(name 不合規,或 body 出現未定義的欄位)
+          description: 驗證失敗(name 不合規,或 body 出現未定義的欄位)。code 為 `VALIDATION_ERROR`。
           content:
             application/json:
               schema:
@@ -111,7 +113,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Project'
         '404':
-          description: 找不到
+          description: 找不到。code 為 `NOT_FOUND`。
           content:
             application/json:
               schema:
@@ -152,13 +154,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Project'
         '400':
-          description: 驗證失敗(status 缺漏、不在 enum 內,或 body 出現未定義的欄位)
+          description: 驗證失敗(status 缺漏、不在 enum 內,或 body 出現未定義的欄位)。code 為 `VALIDATION_ERROR`。
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '404':
-          description: 找不到
+          description: 找不到。code 為 `NOT_FOUND`。
           content:
             application/json:
               schema:
@@ -258,5 +260,10 @@ components:
       properties:
         code:
           type: string
+          # 列舉而不是開放字串:code 是 client 拿來分支的東西,開放的話新值可以
+          # 悄悄長出來,而 client 的 switch 不會有人提醒它漏了一個 case。
+          # 加第三個值是一次 contract 變更 + 一次型別重新生成 —— 本來就該被看見。
+          # 見 change-requests/CR-012.md 的裁決。
+          enum: [VALIDATION_ERROR, NOT_FOUND]
         message:
           type: string
