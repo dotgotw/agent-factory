@@ -17,7 +17,7 @@
   "roles": {
     "architect": {
       "allow": ["contract/"],
-      "note": "唯一能改 API contract 與 DB migration 的角色"
+      "note": "唯一能改 API contract 與 DB migration 的角色。contract/AGENTS.md 歸 infra —— 角色不得改寫自己被賦予的規則,四份 AGENTS.md 一致(CR-010)"
     },
     "infra": {
       "allow": [
@@ -45,6 +45,7 @@
         "backend/AGENTS.md",
         "frontend/AGENTS.md",
         "e2e/AGENTS.md",
+        "contract/AGENTS.md",
         "infra/"
       ],
       "note": "規則的執行者。實作角色不得改動 CI,否則測試紅了可以直接把檢查拿掉。同理,一個角色不得寫入「宣告該角色能 import 什麼、被什麼約束」的檔案 —— AGENTS.md、tsconfig.json、package.json 皆屬此類,見 ADR-003。"
