@@ -186,7 +186,7 @@ export interface operations {
                     "application/json": components["schemas"]["Project"];
                 };
             };
-            /** @description 驗證失敗 */
+            /** @description 驗證失敗(name 不合規,或 body 出現未定義的欄位) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -252,7 +252,7 @@ export interface operations {
                     "application/json": components["schemas"]["Project"];
                 };
             };
-            /** @description 驗證失敗(status 缺漏或不在 enum 內) */
+            /** @description 驗證失敗(status 缺漏、不在 enum 內,或 body 出現未定義的欄位) */
             400: {
                 headers: {
                     [name: string]: unknown;
