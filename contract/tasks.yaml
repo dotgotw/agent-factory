@@ -120,7 +120,11 @@ tasks:
     # AC 的措辭因此改成「可觀察的結果」而不是「內部發生了什麼」:e2e 驗不了
     # 「信寄出去了」,驗得了「lastNotifiedAt 更新了」。改的是驗收方式,
     # 不是驗收意圖。
-    status: todo
+    #
+    # 實作 #64,由 architect 實測三條 AC 全部成立(帶 ownerEmail 異動後
+    # lastNotifiedAt 有值、同狀態再 PATCH 不變、換狀態才更新、無 ownerEmail
+    # 回 200 且欄位不存在)。review 而不是 done —— 等 qa 補測試。
+    status: review
     depends_on: [TASK-002]
     contract_refs:
       - "openapi.yaml#/paths/~1projects~1{projectId}/patch"
@@ -170,8 +174,8 @@ tasks:
     #   ?status=ACTIVE                  400(enum 大小寫敏感)
     #   ?status=active&status=archived  400(重複帶參數會拿到陣列)
     #   ?status=                        200,視同未帶 —— 契約定死的那一條
-    # review 而不是 done —— AC-013 是 verified_by: e2e,等 qa 補測試。
-    status: review
+    # AC-013 的 e2e 測試 #63 已合併,check:ac 看得到覆蓋,狀態進 done。
+    status: done
     depends_on: [TASK-006]
     contract_refs:
       - "openapi.yaml#/paths/~1projects/get"
