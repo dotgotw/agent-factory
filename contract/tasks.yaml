@@ -97,11 +97,10 @@ tasks:
     title: 專案封存功能
     owner: backend
     # CR-001 已 accepted,PATCH /projects/{projectId} 就緒,解除阻擋。
-    # 實作於 #56 完成並由 architect 實測(封存後 200、從 status=active 消失、
-    # 出現在 status=archived、壞 status 400、空 body 400、不存在的 id 404)。
-    # review 而不是 done —— AC-007 是 verified_by: e2e,要等 qa 補上引用
-    # AC-007 的測試,check:ac 才會放行。
-    status: review
+    # 實作 #56,AC-007 的 e2e 測試 #61(e2e/archive.spec.ts)。
+    # check:ac 現在看得到 AC-007 的覆蓋,狀態才進 done —— 不是「有人覺得
+    # 做完了」,是測試每次 CI 都重跑一遍。
+    status: done
     depends_on: [TASK-002]
     contract_refs:
       - "openapi.yaml#/paths/~1projects~1{projectId}/patch"
@@ -166,8 +165,13 @@ tasks:
     # 這跟 CR-001 裁決拒絕「{} 是一次成功但什麼都沒做的 PATCH」是同一個理由:
     # 靜默的錯誤來源比明確的失敗貴。
     #
-    # openapi.yaml 的 400 已補上(同一張 PR),含 status 給空字串的處理方式。
-    status: todo
+    # openapi.yaml 的 400 已補上(#58),實作 #59,由 architect 實測:
+    #   ?status=bogus                   400
+    #   ?status=ACTIVE                  400(enum 大小寫敏感)
+    #   ?status=active&status=archived  400(重複帶參數會拿到陣列)
+    #   ?status=                        200,視同未帶 —— 契約定死的那一條
+    # review 而不是 done —— AC-013 是 verified_by: e2e,等 qa 補測試。
+    status: review
     depends_on: [TASK-006]
     contract_refs:
       - "openapi.yaml#/paths/~1projects/get"
