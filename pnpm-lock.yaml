@@ -7,17 +7,7 @@ settings:
 importers:
 
   .:
-    dependencies:
-      express:
-        specifier: ^4.22.2
-        version: 4.22.2
     devDependencies:
-      '@types/express':
-        specifier: ^4.17.25
-        version: 4.17.25
-      '@types/node':
-        specifier: ^26.4.0
-        version: 26.4.0
       js-yaml:
         specifier: ^5.4.1
         version: 5.4.1
@@ -30,6 +20,40 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+
+  backend:
+    dependencies:
+      '@af/contract':
+        specifier: workspace:*
+        version: link:../generated
+      express:
+        specifier: ^4.22.2
+        version: 4.22.2
+    devDependencies:
+      '@types/express':
+        specifier: ^4.17.25
+        version: 4.17.25
+      '@types/node':
+        specifier: ^26.4.0
+        version: 26.4.0
+
+  e2e:
+    dependencies:
+      '@af/contract':
+        specifier: workspace:*
+        version: link:../generated
+    devDependencies:
+      '@types/node':
+        specifier: ^26.4.0
+        version: 26.4.0
+
+  frontend:
+    dependencies:
+      '@af/contract':
+        specifier: workspace:*
+        version: link:../generated
+
+  generated: {}
 
 packages:
 
