@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import type { components, operations } from '../../../generated/api.js';
+import type { components, operations } from '@af/contract';
 
 // 型別全部來自 contract,不手寫。
 type Project = components['schemas']['Project'];
