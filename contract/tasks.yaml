@@ -97,7 +97,11 @@ tasks:
     title: 專案封存功能
     owner: backend
     # CR-001 已 accepted,PATCH /projects/{projectId} 就緒,解除阻擋。
-    status: todo
+    # 實作於 #56 完成並由 architect 實測(封存後 200、從 status=active 消失、
+    # 出現在 status=archived、壞 status 400、空 body 400、不存在的 id 404)。
+    # review 而不是 done —— AC-007 是 verified_by: e2e,要等 qa 補上引用
+    # AC-007 的測試,check:ac 才會放行。
+    status: review
     depends_on: [TASK-002]
     contract_refs:
       - "openapi.yaml#/paths/~1projects~1{projectId}/patch"
