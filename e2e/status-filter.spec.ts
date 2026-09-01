@@ -58,15 +58,16 @@ async function list(query = ''): Promise<ListResponse> {
   return (await res.json()) as ListResponse;
 }
 
-/** 400 的 body 必須符合 Error schema。code 的字面值見檔案末端的註解。 */
+/**
+ * GET /projects 的 400 一律是 VALIDATION_ERROR —— 寫在該回應的 description 裡,
+ * 而 code 的合法值由 Error 的 enum 收斂(CR-012 裁決)。
+ */
 async function assertRejected(query: string): Promise<void> {
   const res = await fetch(`${BASE}/projects${query}`);
   assert.equal(res.status, 400, `${query} 應被拒絕`);
 
   const err = (await res.json()) as ApiError;
-  assert.equal(typeof err.code, 'string', `${query}: Error.code 應為字串`);
-  assert.ok(err.code.length > 0, `${query}: Error.code 不可為空`);
-  assert.equal(typeof err.message, 'string', `${query}: Error.message 應為字串`);
+  assert.equal(err.code, 'VALIDATION_ERROR', `${query}: code 不符`);
   assert.ok(err.message.length > 0, `${query}: Error.message 不可為空`);
 }
 
@@ -163,14 +164,3 @@ describe('Projects API — status 篩選參數', () => {
     assert.ok(statuses.has('archived'), '不篩選時應含 archived');
   });
 });
-
-/**
- * 400 只斷言 Error 的形狀,不釘 code 的字面值 —— 與 archive.spec.ts 同一個理由。
- *
- * openapi.yaml 的 Error 只要求 code 與 message 存在。GET /projects 的 400 是
- * limit、offset、status 共用的同一個回應,其中 limit/offset 那半邊被 AC-012
- * 釘成 VALIDATION_ERROR,status 這半邊沒有任何地方釘 —— AC-013 沒提。
- *
- * 同一個回應兩半採不同標準很奇怪,但那要在 contract 或 AC 上收斂,
- * 不是由 e2e 單方面決定。
- */

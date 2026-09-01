@@ -50,6 +50,13 @@ async function patchProject(id: string, body: unknown): Promise<Response> {
   });
 }
 
+/** 錯誤回應的 code 由 openapi.yaml 的 Error enum 與各回應的 description 定義。 */
+async function assertError(res: Response, code: ApiError['code']): Promise<void> {
+  const err = (await res.json()) as ApiError;
+  assert.equal(err.code, code);
+  assert.ok(err.message.length > 0, 'Error.message 不可為空字串');
+}
+
 async function list(query = ''): Promise<ListResponse> {
   const res = await fetch(`${BASE}/projects${query}`);
   assert.equal(res.status, 200);
@@ -136,9 +143,7 @@ describe('Projects API — 封存', () => {
   test('AC-007: PATCH 不存在的 id 回 404,code 為 NOT_FOUND', async () => {
     const res = await patchProject('does-not-exist', archive);
     assert.equal(res.status, 404);
-
-    const err = (await res.json()) as ApiError;
-    assert.equal(err.code, 'NOT_FOUND');
+    await assertError(res, 'NOT_FOUND');
   });
 
   test('AC-007: status 不在 enum 內時回 400', async () => {
@@ -147,7 +152,7 @@ describe('Projects API — 封存', () => {
     for (const bad of ['bogus', 'ACTIVE', '', null, 123]) {
       const res = await patchProject(created.id, { status: bad });
       assert.equal(res.status, 400, `status=${JSON.stringify(bad)} 應被拒絕`);
-      assertErrorShape(await res.json());
+      await assertError(res, 'VALIDATION_ERROR');
     }
 
     // 被拒絕的請求不該留下痕跡。
@@ -162,27 +167,9 @@ describe('Projects API — 封存', () => {
 
     const res = await patchProject(created.id, {});
     assert.equal(res.status, 400);
-    assertErrorShape(await res.json());
+    await assertError(res, 'VALIDATION_ERROR');
 
     const after = await fetch(`${BASE}/projects/${created.id}`);
     assert.equal(((await after.json()) as Project).status, 'active', '空 body 不該改動任何東西');
   });
 });
-
-/**
- * PATCH 的 400 只斷言 Error 的形狀,不斷言 code 的字面值。
- *
- * openapi.yaml 的 Error 只要求 code 與 message 存在,而 AC-007 沒有指定
- * PATCH 的 400 要用哪個 code —— POST 與 GET 的 400 是由 AC-002 / AC-012
- * 各自釘成 VALIDATION_ERROR 的,不是 contract 釘的。這裡跟著寫 VALIDATION_ERROR
- * 就變成拿測試立法:規格沒說的事,不該由 e2e 單方面決定。
- *
- * 這個缺口值得補,但要補在 contract 或 AC,不是補在這裡。
- */
-function assertErrorShape(body: unknown): void {
-  const err = body as ApiError;
-  assert.equal(typeof err.code, 'string');
-  assert.ok(err.code.length > 0, 'Error.code 不可為空字串');
-  assert.equal(typeof err.message, 'string');
-  assert.ok(err.message.length > 0, 'Error.message 不可為空字串');
-}
