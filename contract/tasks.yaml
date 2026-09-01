@@ -240,3 +240,31 @@ tasks:
         text: body 為語法錯誤的 JSON 時回 400,且 body 是 Error schema(content-type 為 application/json)
         verified_by: e2e
 
+  - id: TASK-010
+    title: body 超過大小上限時回 413 + Error schema
+    owner: backend
+    # backend 在 TASK-009 之後問的兩個但書,我只採了一個。
+    #
+    # 採:413。實測 POST 一個 200KB 的 body → 413 但 content-type 是 text/html
+    # (express.json() 的預設上限,body-parser 丟例外走預設處理器)。
+    # 這跟 TASK-009 是同一個缺陷:**打的是一個已宣告的操作,拿到的卻是一個
+    # 未宣告的回應形狀**。契約已補上 413 與 PAYLOAD_TOO_LARGE。
+    #
+    # 不採:未定義路由的 404 仍回 HTML。理由不是成本,是範圍 —— 契約描述它
+    # 宣告的操作,不描述未宣告的路徑;一份契約沒辦法枚舉、也沒辦法驗證它自己
+    # 路徑集合的補集。要讓「所有錯誤都是 Error」變成全 API 的保證,那是另一個
+    # 決定,不能當成 bug 修進來。這條寫進 openapi.yaml 的 info.description。
+    #
+    # 為什麼需要新的 code 值:把「你的 body 有 200KB」壓成 VALIDATION_ERROR
+    # 等於叫 client 去改欄位,而它該做的是少送一點。CR-012 裁決說加值必須是
+    # 一次看得見的動作 —— 這就是那次動作。
+    status: todo
+    depends_on: [TASK-009]
+    contract_refs:
+      - "openapi.yaml#/paths/~1projects/post"
+      - "openapi.yaml#/components/schemas/Error"
+    acceptance:
+      - id: AC-017
+        text: request body 超過大小上限時回 413,body 是 Error schema 且 code 為 PAYLOAD_TOO_LARGE
+        verified_by: e2e
+

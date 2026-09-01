@@ -107,7 +107,7 @@ export interface components {
         };
         Error: {
             /** @enum {string} */
-            code: "VALIDATION_ERROR" | "NOT_FOUND";
+            code: "VALIDATION_ERROR" | "NOT_FOUND" | "PAYLOAD_TOO_LARGE";
             message: string;
         };
     };
@@ -198,6 +198,21 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+            /**
+             * @description request body 超過伺服器允許的大小。code 為 `PAYLOAD_TOO_LARGE`。
+             *
+             *     **上限的數值不寫進契約** —— 那是部署與實作的選擇(見 AGENTS.md
+             *     對 infra 的分界)。契約保證的是「超過時回 413 且 body 是 Error」,
+             *     不是「上限剛好是多少」。
+             */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     getProject: {
@@ -266,6 +281,21 @@ export interface operations {
             };
             /** @description 找不到。code 為 `NOT_FOUND`。 */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description request body 超過伺服器允許的大小。code 為 `PAYLOAD_TOO_LARGE`。
+             *
+             *     **上限的數值不寫進契約** —— 那是部署與實作的選擇(見 AGENTS.md
+             *     對 infra 的分界)。契約保證的是「超過時回 413 且 body 是 Error」,
+             *     不是「上限剛好是多少」。
+             */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };
