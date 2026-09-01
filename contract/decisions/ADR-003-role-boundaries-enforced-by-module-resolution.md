@@ -142,9 +142,18 @@ CR-999: accepted
 
 | 環境 | 結果 |
 |---|---|
-| 巢狀 worktree(`.claude/worktrees/architect`) | **2/3**,`express` 解析到主 checkout 的 `node_modules`,降級為 ⚠️ 並 exit 0 |
+| 巢狀 worktree(`.claude/worktrees/architect`),主 checkout 尚未瘦身時 | **2/3**,`express` 解析到主 checkout 的 `node_modules`,降級為 ⚠️ 並 exit 0 |
+| 同一個巢狀 worktree,主 checkout 重裝之後 | **3/3** |
 | 乾淨複本(不在任何 checkout 底下) | **3/3** |
 | CI(`/home/runner/work/...`) | **3/3** |
+
+前兩列是同一個目錄、同一支檢查,差別只在**上層那棵 `node_modules` 裡有什麼**。
+#41 把 root 的 `dependencies` 清空、主 checkout 重裝之後,`@types/express` 不再
+被 hoist 到上層,洩漏就消失了。
+
+**所以結論不是「巢狀時一定驗不到」,是「巢狀時的答案取決於上層裝了什麼」**
+—— 而一個取決於工作區之外、且沒有人在管的變數的答案,本身就不算證據。
+今天本機碰巧 3/3 不代表明天還是:上層換個分支、裝個套件,同一支檢查就換一個答案。
 
 所以幽靈依賴那半邊的權威在 CI。**鐵則 5 的「送出前 `pnpm verify` 全綠」對這半邊
 不再是充分證據** —— 本機綠只代表「這裡問不出答案」,不代表「答案是好的」。
