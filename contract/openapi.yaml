@@ -1,10 +1,15 @@
 openapi: 3.0.3
 info:
   title: Projects API
-  version: 2.1.0
+  version: 2.2.0
   description: |
     唯一 API 真相。Frontend 與 Backend 的型別皆由此檔生成。
     任何修改必須由 Architect 執行,並附帶一份 change-requests/CR-*.md。
+
+    **本契約描述它宣告的操作,不描述未宣告的路徑。** 打到這裡沒有列出的
+    路徑時會發生什麼事,不是本檔的保證範圍 —— 一份契約沒有辦法枚舉、
+    也沒有辦法驗證它自己路徑集合的補集。要讓「所有錯誤都是 Error」成為
+    全 API 的保證,那是另一個決定,不能當成 bug 修進來。
 
 servers:
   - url: http://localhost:3000
@@ -94,6 +99,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '413':
+          description: |
+            request body 超過伺服器允許的大小。code 為 `PAYLOAD_TOO_LARGE`。
+
+            **上限的數值不寫進契約** —— 那是部署與實作的選擇(見 AGENTS.md
+            對 infra 的分界)。契約保證的是「超過時回 413 且 body 是 Error」,
+            不是「上限剛好是多少」。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /projects/{projectId}:
     get:
@@ -155,6 +171,17 @@ paths:
                 $ref: '#/components/schemas/Project'
         '400':
           description: 驗證失敗(status 缺漏、不在 enum 內,或 body 出現未定義的欄位)。code 為 `VALIDATION_ERROR`。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: |
+            request body 超過伺服器允許的大小。code 為 `PAYLOAD_TOO_LARGE`。
+
+            **上限的數值不寫進契約** —— 那是部署與實作的選擇(見 AGENTS.md
+            對 infra 的分界)。契約保證的是「超過時回 413 且 body 是 Error」,
+            不是「上限剛好是多少」。
           content:
             application/json:
               schema:
@@ -264,6 +291,6 @@ components:
           # 悄悄長出來,而 client 的 switch 不會有人提醒它漏了一個 case。
           # 加第三個值是一次 contract 變更 + 一次型別重新生成 —— 本來就該被看見。
           # 見 change-requests/CR-012.md 的裁決。
-          enum: [VALIDATION_ERROR, NOT_FOUND]
+          enum: [VALIDATION_ERROR, NOT_FOUND, PAYLOAD_TOO_LARGE]
         message:
           type: string
