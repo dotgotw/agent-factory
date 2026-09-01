@@ -121,10 +121,10 @@ tasks:
     # 「信寄出去了」,驗得了「lastNotifiedAt 更新了」。改的是驗收方式,
     # 不是驗收意圖。
     #
-    # 實作 #64,由 architect 實測三條 AC 全部成立(帶 ownerEmail 異動後
-    # lastNotifiedAt 有值、同狀態再 PATCH 不變、換狀態才更新、無 ownerEmail
-    # 回 200 且欄位不存在)。review 而不是 done —— 等 qa 補測試。
-    status: review
+    # 實作 #64,AC-008/009/014 的 e2e 測試 #67。check:ac 看得到三條的覆蓋,
+    # 狀態進 done —— 副作用能進到這一格,是因為 ADR-004 先給了它一個
+    # 可觀察面;沒有 lastNotifiedAt 的話這張永遠卡在 review。
+    status: done
     depends_on: [TASK-002]
     contract_refs:
       - "openapi.yaml#/paths/~1projects~1{projectId}/patch"
