@@ -38,6 +38,7 @@ test('歸屬矩陣:每個檔案恰好一個擁有者', () => {
     // 唯一真相
     'contract/openapi.yaml': 'architect',
     'contract/decisions/ADR-003-x.md': 'architect',
+    'contract/AGENTS.md': 'infra',
     // 實作
     'backend/src/index.ts': 'backend',
     'frontend/src/app.ts': 'frontend',
@@ -67,23 +68,30 @@ test('ADR-003 不變式:角色不得擁有宣告自己邊界的檔案', () => {
   const declaring = ['AGENTS.md', 'tsconfig.json', 'package.json'];
   const homes = { backend: 'backend/', frontend: 'frontend/', qa: 'e2e/' };
 
-  for (const [role, dir] of Object.entries(homes)) {
-    for (const name of declaring) {
-      const file = `${dir}${name}`;
-      assert.equal(
-        ownerOf(file, config)?.role,
-        'infra',
-        `${file} 若歸 ${role} 自己,等於把鎖的鑰匙留在被鎖的人口袋裡`,
-      );
-    }
+  // architect 只有 AGENTS.md 這一個實例 —— contract/ 底下沒有 tsconfig.json
+  // 或 package.json,那兩個路徑目前無主,不該假裝它們歸 infra。
+  const cases = [
+    ...Object.entries(homes).flatMap(([role, dir]) =>
+      declaring.map((name) => [role, `${dir}${name}`]),
+    ),
+    ['architect', 'contract/AGENTS.md'],
+  ];
+
+  for (const [role, file] of cases) {
+    assert.equal(
+      ownerOf(file, config)?.role,
+      'infra',
+      `${file} 若歸 ${role} 自己,等於把鎖的鑰匙留在被鎖的人口袋裡`,
+    );
   }
 });
 
-test('既有疏漏:contract/AGENTS.md 仍歸 architect(見 CR-010)', () => {
-  // 這是上面那條不變式的第四個實例,ADR-003 沒有列到。它動到 architect
-  // 自己的 scope,不是 infra 能單方面決定的,所以留在 CR-010 等裁決。
-  // 裁決若是「一併收歸 infra」,改 scope.json 之後把這條測試翻成 'infra'。
-  assert.equal(ownerOf('contract/AGENTS.md', config)?.role, 'architect');
+test('第四個實例:contract/AGENTS.md 歸 infra(CR-010 accepted)', () => {
+  // 不變式的第四個實例,ADR-003 原文沒有列到,由 CR-010 補上:四份 AGENTS.md
+  // 一致,不留例外。architect 的其餘 contract/ 不受影響。
+  assert.equal(ownerOf('contract/AGENTS.md', config)?.role, 'infra');
+  assert.equal(ownerOf('contract/openapi.yaml', config)?.role, 'architect');
+  assert.equal(ownerOf('contract/decisions/ADR-001-x.md', config)?.role, 'architect');
 });
 
 test('陷阱一:change-requests/ 是加法,五個角色都寫得到', () => {

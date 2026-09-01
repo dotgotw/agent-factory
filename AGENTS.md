@@ -38,8 +38,8 @@
 <!-- AGENT-FACTORY:START -->
 | 角色 | 可寫路徑 | 說明 |
 |---|---|---|
-| architect | `contract/` | 唯一能改 API contract 與 DB migration 的角色 |
-| infra | `.github/`、`.claude/`、`scripts/`、`CLAUDE.md`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json`、`backend/tsconfig.json`、`frontend/tsconfig.json`、`e2e/tsconfig.json`、`backend/package.json`、`frontend/package.json`、`e2e/package.json`、`Dockerfile`、`docker-compose.yml`、`.env.example`、`.gitignore`、`.gitattributes`、`README.md`、`AGENTS.md`、`backend/AGENTS.md`、`frontend/AGENTS.md`、`e2e/AGENTS.md`、`infra/` | 規則的執行者。實作角色不得改動 CI,否則測試紅了可以直接把檢查拿掉。同理,一個角色不得寫入「宣告該角色能 import 什麼、被什麼約束」的檔案 —— AGENTS.md、tsconfig.json、package.json 皆屬此類,見 ADR-003。 |
+| architect | `contract/` | 唯一能改 API contract 與 DB migration 的角色。contract/AGENTS.md 歸 infra —— 角色不得改寫自己被賦予的規則,四份 AGENTS.md 一致(CR-010) |
+| infra | `.github/`、`.claude/`、`scripts/`、`CLAUDE.md`、`package.json`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`、`tsconfig.json`、`backend/tsconfig.json`、`frontend/tsconfig.json`、`e2e/tsconfig.json`、`backend/package.json`、`frontend/package.json`、`e2e/package.json`、`Dockerfile`、`docker-compose.yml`、`.env.example`、`.gitignore`、`.gitattributes`、`README.md`、`AGENTS.md`、`backend/AGENTS.md`、`frontend/AGENTS.md`、`e2e/AGENTS.md`、`contract/AGENTS.md`、`infra/` | 規則的執行者。實作角色不得改動 CI,否則測試紅了可以直接把檢查拿掉。同理,一個角色不得寫入「宣告該角色能 import 什麼、被什麼約束」的檔案 —— AGENTS.md、tsconfig.json、package.json 皆屬此類,見 ADR-003。 |
 | backend | `backend/src/` | 不得改 contract、frontend、e2e |
 | frontend | `frontend/src/` | 不得改 contract、backend、e2e |
 | qa | `e2e/` | 只讀驗收條件與 contract,不讀實作。e2e/ 底下宣告邊界的檔案(tsconfig.json、package.json、AGENTS.md)歸 infra |
