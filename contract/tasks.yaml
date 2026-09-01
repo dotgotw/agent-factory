@@ -139,3 +139,24 @@ tasks:
       - id: AC-012
         text: limit 超出 1..100 範圍時回 400,code 為 VALIDATION_ERROR
         verified_by: e2e
+
+  - id: TASK-007
+    title: 列表篩選參數的驗證 —— status 不在 enum 內要回 400
+    owner: backend
+    # 既有缺口,backend 做 TASK-004 時發現的。GET /projects?status=bogus 目前
+    # 回 200 + 空列表:client 打錯字看起來像「沒有資料」,而不是「你問錯了」。
+    #
+    # 同一個 API 裡兩套標準:limit 超範圍回 400(AC-012),PATCH 的 status
+    # 不在 enum 內也回 400(#56 實測),只有 GET 的 status filter 靜默吞掉。
+    # 這跟 CR-001 裁決拒絕「{} 是一次成功但什麼都沒做的 PATCH」是同一個理由:
+    # 靜默的錯誤來源比明確的失敗貴。
+    #
+    # openapi.yaml 的 400 已補上(同一張 PR),含 status 給空字串的處理方式。
+    status: todo
+    depends_on: [TASK-006]
+    contract_refs:
+      - "openapi.yaml#/paths/~1projects/get"
+    acceptance:
+      - id: AC-013
+        text: status 不在 ProjectStatus 的 enum 內時回 400,空字串則視同未帶此參數
+        verified_by: e2e

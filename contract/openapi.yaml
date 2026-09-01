@@ -56,6 +56,20 @@ paths:
                     description: |
                       符合篩選條件的總筆數(分頁前),用於前端計算頁數。
                       必填 —— 見 change-requests/CR-003.md 階段三。
+        # 這個 400 在實作與 e2e 裡早就存在(AC-012 的 limit/offset 驗證),
+        # 只是從來沒有寫進 contract —— 而 check:drift 只比對生成的型別,
+        # 看不見「回應碼漏寫」。補上,並一併涵蓋 status。
+        '400':
+          description: |
+            查詢參數驗證失敗。limit 不在 1..100、offset 為負數,
+            或 status 不在 ProjectStatus 的 enum 內。
+
+            status 給空字串等同未帶此參數(不篩選),不是驗證失敗 ——
+            client 無條件串上 `&status=` 是常見寫法,為此回 400 不划算。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     post:
       operationId: createProject
       summary: 建立專案
