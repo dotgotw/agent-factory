@@ -1,4 +1,4 @@
-import type { components, operations } from '../../generated/api.js';
+import type { components, operations } from '@af/contract';
 
 export type Project = components['schemas']['Project'];
 export type CreateProjectRequest = components['schemas']['CreateProjectRequest'];
