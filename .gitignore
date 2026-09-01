@@ -3,3 +3,7 @@ dist/
 .env
 .claude/role
 .claude/settings.local.json
+
+# check-boundaries 的違規 fixture。腳本自己會刪(finally),這一行是保險:
+# 行程被硬殺留下的殘留物不該有機會被 commit 進來。
+*.boundary-fixture.ts
