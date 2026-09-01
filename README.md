@@ -126,6 +126,26 @@ fatal: 'main' is already used by worktree at ...
 超出你的權限」,一張 PR 同時宣稱是兩個角色,等於沒有權限這回事。
 跨角色的改動必須拆成多張 PR。
 
+**4. worktree 在 repo 底下,所以它看得到主 checkout 的 `node_modules`。**
+Node 與 TypeScript 解析模組時會一路往上層目錄找 `node_modules`,而
+`.claude/worktrees/<role>` 的上層正是主 checkout。
+
+後果是:**「這個 package 不該解析得到某個套件」這類負向檢查,在 worktree 裡
+跑可能是假綠** —— 套件從主 checkout 漏了進來。實測過:`frontend/src` 裡放一個
+`import express from 'express'`,在 worktree 裡 typecheck 通過,在乾淨的複本裡
+是 `TS2307 Cannot find module 'express'`。
+
+CI 是乾淨 checkout,沒有這個上游,所以**這件事的權威是 CI**。要在本機重現
+CI 的答案,把工作區複製到 repo 樹之外再跑:
+
+```bash
+tar --exclude=node_modules --exclude=.git -cf - . | (mkdir -p /tmp/cleanroom && cd /tmp/cleanroom && tar xf -)
+cd /tmp/cleanroom && pnpm install --frozen-lockfile && pnpm verify
+```
+
+正向的檢查(typecheck、e2e、drift、scope)不受影響 —— 多看得到一些東西不會讓
+它們變綠。只有「應該解析不到」這一類會。
+
 **3. 被 scope 擋下來時不要繞。** 去 `change-requests/` 開一張 CR 說明你需要什麼,
 由 Architect 裁決。這條路徑是整個設計的核心,見下一節。
 
