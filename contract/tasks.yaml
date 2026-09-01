@@ -258,7 +258,8 @@ tasks:
     # 為什麼需要新的 code 值:把「你的 body 有 200KB」壓成 VALIDATION_ERROR
     # 等於叫 client 去改欄位,而它該做的是少送一點。CR-012 裁決說加值必須是
     # 一次看得見的動作 —— 這就是那次動作。
-    status: todo
+    # 實作 #80,AC-017 的 e2e 測試 #84。
+    status: done
     depends_on: [TASK-009]
     contract_refs:
       - "openapi.yaml#/paths/~1projects/post"
@@ -283,9 +284,28 @@ tasks:
     # 卻依賴得到的相容面。跟 additionalProperties 那次是同一個原則的第四次
     # 套用:未宣告的東西不該被默默接受。
     #
-    # 修法是兩個 express 設定,實測過六個變體全部變 404(含 /projects//):
-    #   app.set('case sensitive routing', true)
-    #   app.set('strict routing', true)
+    # 【修正】開這張任務時我寫「修法是兩個 express 設定」,那是錯的。
+    # backend 在實作時指出來,我重測確認:
+    #
+    #   app.use('/projects', router)         /Projects=404  /projects/=200  /projects//=200
+    #   app.use(router) + 路徑寫在 router     /Projects=200  /projects/=200  /projects//=404
+    #
+    # 兩個都沒修好,原因是兩件我當初沒測到的事:
+    #   1. app.use(path, router) 的掛載點比對**寫死忽略 strict**,所以結尾
+    #      斜線那半永遠修不掉 —— 完整路徑必須寫進 router 自己的路由
+    #   2. Router() 不繼承 app 的設定,要自己帶
+    #      Router({ caseSensitive: true, strict: true })
+    #
+    # 我當初的實測用的是 app.get('/projects') 直接掛在 app 上,那個形狀確實
+    # 兩行就夠 —— 但那不是這個 repo 的結構。**測了一個不是待修對象的東西,
+    # 結論看起來有根據,其實沒有。**
+    #
+    # 實際的修法是三件事(#81),六個變體全部 404:
+    #   app.set('case sensitive routing', true) / app.set('strict routing', true)
+    #   Router({ caseSensitive: true, strict: true })
+    #   app.use(projectsRouter) —— 完整路徑寫在 router 內
+    #
+    # 實作 #81,AC-018 的 e2e 測試 #85。
     #
     # 風險:靠未文件化路徑呼叫的 client 會壞。查過,本 repo 沒有 ——
     # frontend/src/api-client.ts 三處都是小寫無斜線,e2e 只用 '/projects'
@@ -293,7 +313,7 @@ tasks:
     #
     # AC 刻意只斷言「不是成功的列表回應」而不斷言 404 的 body 形狀:
     # 那些路徑落在契約之外,回應長什麼樣不是契約管的事。
-    status: todo
+    status: done
     depends_on: []
     contract_refs:
       - "openapi.yaml#/paths/~1projects/get"
