@@ -38,13 +38,41 @@ function isProjectStatus(value: unknown): value is Project['status'] {
   return typeof value === 'string' && Object.hasOwn(PROJECT_STATUSES, value);
 }
 
+/** GET 與 PATCH 共用同一句話 —— 同一個欄位不該有兩種說法。 */
+const INVALID_STATUS_MESSAGE = `status 必須是 ${Object.keys(PROJECT_STATUSES).join(' / ')} 其中之一`;
+
+/**
+ * 解析 status 篩選參數。回傳值有三種意思:
+ *   undefined —— 不篩選(未帶,或空字串)
+ *   null      —— 值非法,由呼叫端回 400
+ *   其餘      —— 要篩的狀態
+ *
+ * 空字串視同未帶是 contract 明寫的(見 GET /projects 的 400 描述):client
+ * 無條件串上 `&status=` 是常見寫法,為此回 400 不划算。
+ *
+ * 重複帶參數(?status=active&status=archived)會拿到陣列,不是字串 ——
+ * isProjectStatus 的 typeof 檢查把它擋在 400,而不是讓 Map 比對靜默地全部落空。
+ */
+function statusParam(raw: unknown): Project['status'] | null | undefined {
+  if (raw === undefined || raw === '') return undefined;
+  return isProjectStatus(raw) ? raw : null;
+}
+
 projectsRouter.get('/', (req: Request, res: Response<ListResponse | ApiError>) => {
-  const status = req.query.status as Project['status'] | undefined;
+  const status = statusParam(req.query.status);
 
   // 預設值與範圍皆依 contract 的 schema(limit: 1..100 預設 20;offset: ≥0 預設 0)。
   const limit = intParam(req.query.limit, 20);
   const offset = intParam(req.query.offset, 0);
 
+  // 依 contract 宣告參數的順序驗證:status、limit、offset。
+  // 同時帶了兩個爛參數時先報哪一個,contract 沒規定,順序一致比較好解釋。
+  if (status === null) {
+    return res.status(400).json({
+      code: 'VALIDATION_ERROR',
+      message: INVALID_STATUS_MESSAGE,
+    });
+  }
   if (limit === null || limit < 1 || limit > 100) {
     return res.status(400).json({
       code: 'VALIDATION_ERROR',
@@ -123,7 +151,7 @@ projectsRouter.patch(
     if (!isProjectStatus(body.status)) {
       return res.status(400).json({
         code: 'VALIDATION_ERROR',
-        message: `status 必須是 ${Object.keys(PROJECT_STATUSES).join(' / ')} 其中之一`,
+        message: INVALID_STATUS_MESSAGE,
       });
     }
 
