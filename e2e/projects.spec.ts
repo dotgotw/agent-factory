@@ -8,7 +8,7 @@
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer, type TestServer } from './server.js';
-import type { components } from '../generated/api.js';
+import type { components } from '@af/contract';
 
 type Project = components['schemas']['Project'];
 
