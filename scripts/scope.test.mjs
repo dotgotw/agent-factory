@@ -7,7 +7,7 @@
  * 的一份清單承載,而清單是會被改的東西 —— 改錯不會有任何症狀:CI 照樣綠,
  * 只是某個角色悄悄拿回了自己的鎖。這份測試是那個改動唯一會出聲的地方。
  *
- * 跑法: pnpm test:scope
+ * 跑法: pnpm test:scripts
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

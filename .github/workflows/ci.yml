@@ -36,11 +36,11 @@ jobs:
       # --frozen-lockfile:lockfile 與 package.json 對不上就失敗,不要自作主張改。
       - run: pnpm install --frozen-lockfile
 
-      # ⓪ 擁有權規則。scope.json 的歸屬矩陣改動會不會靜默拿掉某個角色的鎖。
+      # ⓪ 規則自身的測試:擁有權矩陣、以及「已裁決的 CR 必須真的有裁決」。
       #    這一步必須在 scope job 之外也跑:scope job 只驗「這張 PR 的檔案
       #    符不符合它宣告的角色」,驗不到「規則本身被改壞了」。
-      - name: Ownership rules
-        run: pnpm test:scope
+      - name: Rule self-tests
+        run: pnpm test:scripts
 
       # ① Contract drift:重新生成型別,若與 commit 的版本不同就失敗。
       #    擋掉「手改 generated/」與「改了 contract 卻忘記重新生成」。
