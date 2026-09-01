@@ -2,7 +2,7 @@
  * E2E — 專案封存。對應 contract/tasks.yaml 的 TASK-004 / AC-007。
  *
  * 與其他 spec 分檔的理由同 pagination.spec.ts:`node --test` 平行跑多個檔案,
- * 共用 port 會互相干擾,故本檔使用 3997。獨立的行程等於獨立的記憶體 db,
+ * 共用 server 會互相干擾,故本檔起自己的行程。獨立的行程等於獨立的記憶體 db,
  * 「封存後不出現在 status=active 的列表中」才驗得準 —— 別的檔案建的專案
  * 若混進來,這條斷言會變成在驗別人的資料。
  *
@@ -19,8 +19,8 @@ type UpdateProjectRequest = components['schemas']['UpdateProjectRequest'];
 type ListResponse =
   operations['listProjects']['responses']['200']['content']['application/json'];
 
-const PORT = 3997;
-const BASE = `http://localhost:${PORT}`;
+// port 由 OS 指派,在 before() 拿到 —— 寫死會在併發跑時互撞,見 server.ts。
+let BASE: string;
 
 // undefined 是有意義的狀態:before() 失敗時 after() 沒有東西可收。
 let server: TestServer | undefined;
@@ -66,7 +66,8 @@ async function list(query = ''): Promise<ListResponse> {
 const archive: UpdateProjectRequest = { status: 'archived' };
 
 before(async () => {
-  server = await startServer(PORT);
+  server = await startServer();
+  BASE = server.base;
 
   // 這次 spawn 出來的行程一定是空的 db。不是空的,就代表回應的是別人 ——
   // 「不出現在 active 列表中」這種斷言對錯對象做,比失敗更糟(CR-004)。

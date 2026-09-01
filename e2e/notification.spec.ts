@@ -7,7 +7,7 @@
  * 不是驗收意圖。
  *
  * 契約在 openapi.yaml 的 PATCH /projects/{projectId} description,三條行為
- * 都寫在那裡。獨立 port 3995 與獨立行程,理由同 CR-004。
+ * 都寫在那裡。獨立行程(port 由 OS 指派),理由同 CR-004。
  *
  * 同樣不 import backend/ 的任何內容,只透過 HTTP 與 contract 型別溝通。
  */
@@ -20,8 +20,8 @@ type Project = components['schemas']['Project'];
 type ProjectStatus = components['schemas']['ProjectStatus'];
 type CreateProjectRequest = components['schemas']['CreateProjectRequest'];
 
-const PORT = 3995;
-const BASE = `http://localhost:${PORT}`;
+// port 由 OS 指派,在 before() 拿到 —— 寫死會在併發跑時互撞,見 server.ts。
+let BASE: string;
 
 // undefined 是有意義的狀態:before() 失敗時 after() 沒有東西可收。
 let server: TestServer | undefined;
@@ -83,7 +83,8 @@ function assertWithinWindow(iso: string | undefined, start: number, why: string)
 }
 
 before(async () => {
-  server = await startServer(PORT);
+  server = await startServer();
+  BASE = server.base;
 });
 
 after(async () => {

@@ -9,7 +9,7 @@
  * 這條 AC 驗的是「不靜默忽略」,所以每一條都驗兩件事:回 400,而且**什麼都
  * 沒發生**。只驗狀態碼的話,一個「先套用再拒絕」的實作也會過。
  *
- * 獨立 port 3994 與獨立行程,理由同 CR-004。
+ * 獨立行程(port 由 OS 指派),理由同 CR-004。
  * 同樣不 import backend/ 的任何內容,只透過 HTTP 與 contract 型別溝通。
  */
 import { test, before, after, describe } from 'node:test';
@@ -23,8 +23,8 @@ type CreateProjectRequest = components['schemas']['CreateProjectRequest'];
 type ListResponse =
   operations['listProjects']['responses']['200']['content']['application/json'];
 
-const PORT = 3994;
-const BASE = `http://localhost:${PORT}`;
+// port 由 OS 指派,在 before() 拿到 —— 寫死會在併發跑時互撞,見 server.ts。
+let BASE: string;
 
 // undefined 是有意義的狀態:before() 失敗時 after() 沒有東西可收。
 let server: TestServer | undefined;
@@ -78,7 +78,8 @@ async function seed(name: string): Promise<Project> {
 }
 
 before(async () => {
-  server = await startServer(PORT);
+  server = await startServer();
+  BASE = server.base;
 });
 
 after(async () => {

@@ -4,7 +4,7 @@
  * 契約在 openapi.yaml 的 GET /projects:400 的 description 同時涵蓋
  * limit、offset 與 status,並且把「空字串等同未帶此參數」寫死在那裡。
  *
- * 獨立 port 3996 與獨立行程,理由同 pagination.spec.ts(CR-004):本檔要斷言
+ * 獨立行程(port 由 OS 指派),理由同 pagination.spec.ts(CR-004):本檔要斷言
  * 「帶空字串」與「完全不帶」的回應**逐欄相同**,別的檔案建的資料混進來會讓
  * 這條斷言變成在驗別人的東西。
  *
@@ -21,8 +21,8 @@ type ProjectStatus = components['schemas']['ProjectStatus'];
 type ListResponse =
   operations['listProjects']['responses']['200']['content']['application/json'];
 
-const PORT = 3996;
-const BASE = `http://localhost:${PORT}`;
+// port 由 OS 指派,在 before() 拿到 —— 寫死會在併發跑時互撞,見 server.ts。
+let BASE: string;
 
 const ACTIVE_SEEDED = 3;
 const ARCHIVED_SEEDED = 2;
@@ -72,7 +72,8 @@ async function assertRejected(query: string): Promise<void> {
 }
 
 before(async () => {
-  server = await startServer(PORT);
+  server = await startServer();
+  BASE = server.base;
 
   // 這次 spawn 出來的行程一定是空的 db。不是空的,就代表回應的是別人 ——
   // 本檔的斷言全是精確筆數與逐欄比對(CR-004)。

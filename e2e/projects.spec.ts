@@ -12,14 +12,15 @@ import type { components } from '@af/contract';
 
 type Project = components['schemas']['Project'];
 
-const PORT = 3999;
-const BASE = `http://localhost:${PORT}`;
+// port 由 OS 指派,在 before() 拿到 —— 寫死會在併發跑時互撞,見 server.ts。
+let BASE: string;
 
 // undefined 是有意義的狀態:before() 失敗時 after() 沒有東西可收。
 let server: TestServer | undefined;
 
 before(async () => {
-  server = await startServer(PORT);
+  server = await startServer();
+  BASE = server.base;
 });
 
 after(async () => {
