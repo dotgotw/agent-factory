@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# contract/openapi.yaml -> generated/api.ts
+# contract/openapi.yaml -> generated/api.ts + generated/package.json
 #
 # 這個腳本是「文件變成約束」的關鍵。
 # generated/ 需要 commit 進 repo,CI 會重跑本腳本並比對 diff,
@@ -31,4 +31,41 @@ tmp="$(mktemp)"
 } > "$tmp"
 mv "$tmp" generated/api.ts
 
+# generated/ 的 manifest 也是生成的,不是手寫的。
+#
+# CR-009 初版的第 1 步是「architect 手寫 generated/package.json」,那與上面的
+# `rm -rf generated` 互斥 —— 清空目錄會把手寫的 manifest 一起清掉,下一次
+# check:drift 就會以「檔案被刪除」判紅。修法不是別清空,是讓生成器一併產出它:
+# 一個生成套件的 manifest,內容當然由生成器決定(ADR-002 的推論,_derived 的
+# 第二個實例)。
+#
+# 形狀是實測過的,不是抄來的。在一個真的 pnpm workspace 裡量過:
+#   `import type { components } from '@af/contract'` 在 NodeNext + rootDir 下 exit 0
+#   (TypeScript 不對 node_modules 底下的檔案套 rootDir,pnpm 的 workspace 連結
+#   正是 node_modules 裡的 symlink),而同一份設定擋得下相對路徑逃逸(TS6059)。
+#
+# api.ts 是純型別(openapi-typescript 不產出任何 runtime 值),所以四個 import
+# 全是 `import type`,"default" 那條實際上不會被載入 —— 留著是為了讓這個 package
+# 在 runtime 解析時也有明確答案,而不是留一個洞給人猜。
+#
+# version 固定 0.0.0:private 套件不會發佈,版號不帶任何資訊。要讓它跟著
+# openapi.yaml 的 info.version 走是另一個決定,沒有人要求,就不要無中生有一套
+# 版本政策。
+cat > generated/package.json <<'JSON'
+{
+  "_comment": "⚠️  AUTO-GENERATED — 請勿手動修改。由 scripts/gen-types.sh 產出,內容的權威是 pnpm check:drift。見 contract/decisions/ADR-002-derived-artifacts-guarded-by-regeneration.md",
+  "name": "@af/contract",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./api.ts",
+      "default": "./api.ts"
+    }
+  }
+}
+JSON
+
 echo "✅ generated/api.ts 已更新"
+echo "✅ generated/package.json 已更新(@af/contract)"
