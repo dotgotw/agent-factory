@@ -12,7 +12,7 @@
 import { test, before, after, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { startServer, type TestServer } from './server.js';
-import type { components, operations } from '../generated/api.js';
+import type { components, operations } from '@af/contract';
 
 type Project = components['schemas']['Project'];
 type ApiError = components['schemas']['Error'];
