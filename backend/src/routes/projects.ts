@@ -85,6 +85,39 @@ function ownerEmailField(raw: unknown): string | null | undefined {
   return EMAIL_SHAPE.test(trimmed) ? trimmed : null;
 }
 
+/**
+ * 兩個 request schema 各自允許的欄位 —— contract 的 additionalProperties: false
+ * 在這裡兌現。
+ *
+ * 用 Record<keyof …, true> 而不是字串陣列:contract 新增或改名欄位時,這裡會
+ * 因為鍵對不上而 typecheck 紅,而不是安靜地把一個合法的新欄位擋成 400。
+ * 跟 PROJECT_STATUSES 同一招 —— 白名單最怕的就是它自己過期。
+ */
+const CREATE_FIELDS: Record<keyof CreateProjectRequest, true> = {
+  name: true,
+  ownerEmail: true,
+};
+const UPDATE_FIELDS: Record<keyof UpdateProjectRequest, true> = {
+  status: true,
+};
+
+/** body 裡沒有定義的欄位名,依 client 送來的順序。空陣列代表沒有。 */
+function unknownFields(body: object, allowed: object): string[] {
+  return Object.keys(body).filter((key) => !Object.hasOwn(allowed, key));
+}
+
+/**
+ * 錯誤訊息把 client 送來的欄位名原樣列出來 —— 這正是這條驗證的用處:
+ * `ownerEmial` 這種打錯一個字的欄位,不指名的話對方看不出哪裡錯。
+ * 一併列出接受的欄位,省掉一次翻文件。
+ */
+function unknownFieldsMessage(unknown: string[], allowed: object): string {
+  return (
+    `body 出現未定義的欄位:${unknown.join('、')}。` +
+    `此請求只接受 ${Object.keys(allowed).join('、')}`
+  );
+}
+
 projectsRouter.get('/', (req: Request, res: Response<ListResponse | ApiError>) => {
   const status = statusParam(req.query.status);
 
@@ -122,7 +155,17 @@ projectsRouter.get('/', (req: Request, res: Response<ListResponse | ApiError>) =
 projectsRouter.post(
   '/',
   (req: Request, res: Response<Project | ApiError>) => {
-    const body = req.body as Partial<CreateProjectRequest>;
+    const body = (req.body ?? {}) as Partial<CreateProjectRequest>;
+
+    // AC-015:未定義的欄位擋在最前面。`{"nmae":"x"}` 同時是「name 缺漏」與
+    // 「多了 nmae」,而後者才指得出打錯的那個字 —— 先報有用的那個。
+    const unknown = unknownFields(body, CREATE_FIELDS);
+    if (unknown.length > 0) {
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: unknownFieldsMessage(unknown, CREATE_FIELDS),
+      });
+    }
 
     if (typeof body.name !== 'string' || body.name.trim().length === 0) {
       return res.status(400).json({
@@ -177,6 +220,18 @@ projectsRouter.patch(
   '/:projectId',
   async (req: Request, res: Response<Project | ApiError>) => {
     const body = (req.body ?? {}) as Partial<UpdateProjectRequest>;
+
+    // AC-015:未定義的欄位擋在最前面。最具體的案例是 ADR-004 自己造出來的
+    // —— 改既有專案的 ownerEmail 沒有路徑,client 遲早會送 PATCH
+    // {"status":…,"ownerEmail":…};靜默忽略的話它拿到 200、負責人沒變,
+    // 而它沒有任何辦法知道。
+    const unknown = unknownFields(body, UPDATE_FIELDS);
+    if (unknown.length > 0) {
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: unknownFieldsMessage(unknown, UPDATE_FIELDS),
+      });
+    }
 
     // 先驗 body,再查資料。兩者都是呼叫端的錯,但格式錯是 client 程式的 bug
     // ——換一個 id 還是會錯——而 404 只是這一筆資料的狀態。先講會一直重演的那個。
