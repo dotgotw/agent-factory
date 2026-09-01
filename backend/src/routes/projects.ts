@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import type { components, operations } from '@af/contract';
+import { notifier } from '../notifier.js';
 
 // 型別全部來自 contract,不手寫。
 type Project = components['schemas']['Project'];
@@ -58,6 +59,32 @@ function statusParam(raw: unknown): Project['status'] | null | undefined {
   return isProjectStatus(raw) ? raw : null;
 }
 
+/**
+ * contract 的 `format: email` 沒有規定要驗到多嚴。這條規則刻意寬鬆:它擋的是
+ * 「明顯不可能是信箱」的輸入,不是保證寄得到 —— 寄得到的唯一證明是交付本身。
+ * 寫得太嚴會擋掉合法但少見的地址,而那種誤擋在這裡沒有補救路徑(改不了
+ * 既有專案的 ownerEmail,見 ADR-004「不在本 ADR 範圍」)。
+ */
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * 解析選填的 ownerEmail。回傳值有三種意思:
+ *   undefined —— 未帶
+ *   null      —— 值非法,由呼叫端回 400
+ *   其餘      —— 去掉頭尾空白後的信箱
+ *
+ * 空字串也是 400,不當成「未帶」—— 這裡跟 GET 的 status filter 刻意不同:
+ * status 的空字串規則是 contract 明寫的,而一個 body 欄位送空字串是 client
+ * 的 bug。靜默丟掉的話,專案會安靜地變成「沒有負責人」,然後永遠不會有人
+ * 收到通知 —— 那正是 ADR-004 要補的那種看不見的洞。
+ */
+function ownerEmailField(raw: unknown): string | null | undefined {
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return EMAIL_SHAPE.test(trimmed) ? trimmed : null;
+}
+
 projectsRouter.get('/', (req: Request, res: Response<ListResponse | ApiError>) => {
   const status = statusParam(req.query.status);
 
@@ -110,11 +137,22 @@ projectsRouter.post(
       });
     }
 
+    const ownerEmail = ownerEmailField(body.ownerEmail);
+    if (ownerEmail === null) {
+      return res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: 'ownerEmail 必須是有效的電子郵件位址',
+      });
+    }
+
     const project: Project = {
       id: crypto.randomUUID(),
       name: body.name.trim(),
       status: 'active',
       createdAt: new Date().toISOString(),
+      // 沒帶就整個欄位不存在,而不是存一個 undefined —— 回應裡不該出現
+      // 「有這個 key 但沒有值」的專案。
+      ...(ownerEmail === undefined ? {} : { ownerEmail }),
     };
     db.set(project.id, project);
     res.status(201).json(project);
@@ -137,7 +175,7 @@ projectsRouter.get(
 
 projectsRouter.patch(
   '/:projectId',
-  (req: Request, res: Response<Project | ApiError>) => {
+  async (req: Request, res: Response<Project | ApiError>) => {
     const body = (req.body ?? {}) as Partial<UpdateProjectRequest>;
 
     // 先驗 body,再查資料。兩者都是呼叫端的錯,但格式錯是 client 程式的 bug
@@ -163,10 +201,44 @@ projectsRouter.patch(
         .json({ code: 'NOT_FOUND', message: '找不到該專案' });
     }
 
-    // 展開既有專案而不是只寫 status —— ownerEmail 這類欄位不該因為一次
-    // 封存就消失。contract 只允許改 status,其餘欄位原封不動。
+    // AC-014:狀態沒有真的改變就不是「狀態異動」——不通知,lastNotifiedAt
+    // 原封不動。少了這一段,一個會重試的 client 就是一台騷擾負責人的機器。
+    if (project.status === body.status) {
+      return res.json(project);
+    }
+
+    // 展開既有專案而不是只寫 status —— ownerEmail、lastNotifiedAt 不該因為
+    // 一次封存就消失。contract 只允許改 status,其餘欄位原封不動。
     const updated: Project = { ...project, status: body.status };
+
+    // 先把狀態存進去,再談通知。這支 API 的職責是改狀態,通知是副作用不是
+    // 前提(ADR-004 第三條)—— 交換順序的話,寄送機制掛掉就會連狀態都改不了。
     db.set(project.id, updated);
-    res.json(updated);
+
+    // AC-009:沒有負責人就沒有人要通知。不是錯誤,只是沒有 lastNotifiedAt。
+    if (updated.ownerEmail === undefined) {
+      return res.json(updated);
+    }
+
+    try {
+      await notifier.deliver({
+        ownerEmail: updated.ownerEmail,
+        projectId: updated.id,
+        projectName: updated.name,
+        from: project.status,
+        to: updated.status,
+      });
+    } catch (err) {
+      // 通知失敗不讓 PATCH 失敗,但也不能無聲無息:lastNotifiedAt 不更新,
+      // 於是「沒通知成功」在 API 上一樣看得見(ADR-004 第三條)。
+      console.error(`[notify] 交付失敗 project=${updated.id}`, err);
+      return res.json(updated);
+    }
+
+    // AC-008:lastNotifiedAt 記的是「成功交付給寄送機制」的時刻 —— 所以在
+    // await 之後才取時間,不是在送出之前。它不代表對方收到了。
+    const notified: Project = { ...updated, lastNotifiedAt: new Date().toISOString() };
+    db.set(project.id, notified);
+    res.json(notified);
   },
 );
