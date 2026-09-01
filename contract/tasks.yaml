@@ -229,9 +229,9 @@ tasks:
     # { code: 'VALIDATION_ERROR', message: ... }。不需要新的 code 值。
     # contract 不必改 —— 契約本來就是這樣寫的,是實作沒有做到。
     #
-    # 實作 #72,實測壞 JSON 現在回 400 + application/json 的 Error。
-    # review 而不是 done —— AC-016 還沒有測試。
-    status: review
+    # 實作 #72,AC-016 的 e2e 測試 #76。實測壞 JSON 回 400 +
+    # application/json 的 Error,狀態進 done。
+    status: done
     depends_on: [TASK-008]
     contract_refs:
       - "openapi.yaml#/components/schemas/Error"
@@ -266,5 +266,39 @@ tasks:
     acceptance:
       - id: AC-017
         text: request body 超過大小上限時回 413,body 是 Error schema 且 code 為 PAYLOAD_TOO_LARGE
+        verified_by: e2e
+
+  - id: TASK-011
+    title: 已宣告的操作只在宣告的路徑上提供 —— 大小寫與結尾斜線都算
+    owner: backend
+    # 裁決 TASK-010 時順手量到的,實測六個變體全部回 200 + 正確的列表:
+    #
+    #   /projects  /Projects  /PROJECTS  /pRoJeCtS  /projects/  /projects//
+    #
+    # express 預設 case sensitive routing 與 strict routing 都是 false。
+    #
+    # 這跟「未定義路由回 HTML」不是同一件事,別混在一起看:那件事我判不做,
+    # 因為契約不描述未宣告的路徑**回什麼**。這件事相反 —— 未宣告的路徑回了
+    # 一個**宣告過的成功回應**,等於在契約之外長出一片沒有人寫下來、client
+    # 卻依賴得到的相容面。跟 additionalProperties 那次是同一個原則的第四次
+    # 套用:未宣告的東西不該被默默接受。
+    #
+    # 修法是兩個 express 設定,實測過六個變體全部變 404(含 /projects//):
+    #   app.set('case sensitive routing', true)
+    #   app.set('strict routing', true)
+    #
+    # 風險:靠未文件化路徑呼叫的 client 會壞。查過,本 repo 沒有 ——
+    # frontend/src/api-client.ts 三處都是小寫無斜線,e2e 只用 '/projects'
+    # 與 '/projects/does-not-exist'。
+    #
+    # AC 刻意只斷言「不是成功的列表回應」而不斷言 404 的 body 形狀:
+    # 那些路徑落在契約之外,回應長什麼樣不是契約管的事。
+    status: todo
+    depends_on: []
+    contract_refs:
+      - "openapi.yaml#/paths/~1projects/get"
+    acceptance:
+      - id: AC-018
+        text: /Projects、/PROJECTS、/projects/ 等大小寫或結尾斜線不同的路徑不得回傳成功的專案列表
         verified_by: e2e
 

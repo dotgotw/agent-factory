@@ -82,6 +82,31 @@ export function rulingVerdict(crText, templateText) {
   return { ok: true, chars, reason: null };
 }
 
+/**
+ * 還在等裁決的 CR。沒有就回傳 null。
+ *
+ * 這個 repo 其他的欠帳都已經被機器接手了:check:drift 抓生成物過期、
+ * check:ac 抓 AC 失去測試、check:boundaries 抓依賴邊界消失。只有「有人在等
+ * 裁決」還靠人記得 —— CR-012 躺了一輪才被發現。
+ *
+ * **不判紅。** proposed 不是錯誤,只是需要有人看見;判紅會逼人為了綠燈而草率
+ * 裁決,那比沒有提醒更糟。沒有 proposed 時完全不印,不製造常駐噪音 ——
+ * 一則每次都出現的提醒,幾天之後就跟不存在一樣。
+ *
+ * 「最舊」用檔名編號排序就夠,不讀 git 時間:編號是遞增發放的,而且讀 git
+ * 會讓這個函式需要一個 repo 才能測。
+ */
+export function pendingSummary(crs) {
+  const numberOf = (id) => Number(id.match(/\d+/)?.[0] ?? 0);
+  const proposed = [...crs.entries()]
+    .filter(([, cr]) => cr.status === 'proposed')
+    .map(([id]) => id)
+    .sort((a, b) => numberOf(a) - numberOf(b));
+
+  if (proposed.length === 0) return null;
+  return `${proposed.length} 份 CR 仍為 proposed,最舊的一份是 ${proposed[0]}`;
+}
+
 // ---------- 主流程 ----------
 
 function main() {
@@ -219,6 +244,10 @@ function main() {
       }
     }
   }
+
+  // 等裁決的 CR。放在最後 push,所以它是提醒列表的最後一行。
+  const pending = pendingSummary(crs);
+  if (pending) warnings.push(pending);
 
   // ---------- 輸出 ----------
   console.log(`檢查 ${crFiles.length} 份 CR、${tasks.length} 個任務`);
