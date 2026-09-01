@@ -10,7 +10,7 @@
  * 所以本檔驗的重點不只是「400」—— 狀態碼一直都對。**驗的是回應的形狀**:
  * content-type 是 application/json、body 解析得出 Error、code 給得出來。
  *
- * 獨立 port 3993 與獨立行程,理由同 CR-004。
+ * 獨立行程(port 由 OS 指派),理由同 CR-004。
  * 同樣不 import backend/ 的任何內容,只透過 HTTP 與 contract 型別溝通。
  */
 import { test, before, after, describe } from 'node:test';
@@ -23,8 +23,8 @@ type ApiError = components['schemas']['Error'];
 type ListResponse =
   operations['listProjects']['responses']['200']['content']['application/json'];
 
-const PORT = 3993;
-const BASE = `http://localhost:${PORT}`;
+// port 由 OS 指派,在 before() 拿到 —— 寫死會在併發跑時互撞,見 server.ts。
+let BASE: string;
 
 // undefined 是有意義的狀態:before() 失敗時 after() 沒有東西可收。
 let server: TestServer | undefined;
@@ -98,7 +98,8 @@ function parseOrFail(text: string, why: string): unknown {
 }
 
 before(async () => {
-  server = await startServer(PORT);
+  server = await startServer();
+  BASE = server.base;
 });
 
 after(async () => {

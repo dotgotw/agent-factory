@@ -2,8 +2,8 @@
  * E2E — 列表分頁。對應 contract/tasks.yaml 的 TASK-006(CR-003 階段二)。
  *
  * 與 projects.spec.ts 分檔的理由:
- * 1. `node --test` 會平行執行多個 spec 檔,共用同一 port 會互相干擾,
- *    故本檔使用 3998。
+ * 1. `node --test` 會平行執行多個 spec 檔,共用同一個 server 會互相干擾,
+ *    所以每個檔案起自己的行程(port 由 OS 指派,見 server.ts)。
  * 2. 獨立的 server 行程等於獨立的記憶體 db,可斷言精確筆數,
  *    不必遷就其他測試累積的資料。
  *
@@ -19,8 +19,8 @@ type ApiError = components['schemas']['Error'];
 type ListResponse =
   operations['listProjects']['responses']['200']['content']['application/json'];
 
-const PORT = 3998;
-const BASE = `http://localhost:${PORT}`;
+// port 由 OS 指派,在 before() 拿到 —— 寫死會在併發跑時互撞,見 server.ts。
+let BASE: string;
 const SEEDED = 25; // 刻意大於預設 limit(20),才驗得出預設值有生效。
 
 // undefined 是有意義的狀態:before() 失敗時 after() 沒有東西可收。
@@ -33,7 +33,8 @@ async function list(query = ''): Promise<ListResponse> {
 }
 
 before(async () => {
-  server = await startServer(PORT);
+  server = await startServer();
+  BASE = server.base;
 
   // 這次 spawn 出來的行程一定是空的 db。不是空的,就代表回應的是別人 ——
   // 本檔的斷言全是精確筆數,對錯對象做斷言比測試失敗更糟(CR-004)。
