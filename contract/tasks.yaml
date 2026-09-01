@@ -179,3 +179,30 @@ tasks:
       - id: AC-013
         text: status 不在 ProjectStatus 的 enum 內時回 400,空字串則視同未帶此參數
         verified_by: e2e
+
+  - id: TASK-008
+    title: request body 的未定義欄位一律拒絕
+    owner: backend
+    # backend 做 TASK-005 時問出來的:PATCH 帶多餘欄位目前靜默忽略。
+    # 實測 PATCH {"status":"archived","ownerEmail":"new@example.com"} → 200,
+    # 而 ownerEmail 沒有變;POST {"name":"x","ownerEmial":"..."} 打錯欄位名
+    # → 201,ownerEmail 是空的。兩個都是「成功了,但你要的事沒發生」。
+    #
+    # 這不是新原則,是第三個實例 —— CR-001 拒絕「{} 的空 PATCH」、TASK-007
+    # 拒絕「?status=bogus 回空列表」,理由都是靜默的錯誤來源比明確的失敗貴。
+    # 所以沒有開 CR 也沒有寫 ADR:套用既有決策不需要重新決策一次。
+    #
+    # 最具體的受害者是 ADR-004 自己造出來的:它明說改既有專案的 ownerEmail
+    # 沒有路徑,於是 client 遲早會送 PATCH {"ownerEmail": ...}。
+    #
+    # contract 已改(additionalProperties: false),這張是把它實作出來。
+    status: todo
+    depends_on: [TASK-005]
+    contract_refs:
+      - "openapi.yaml#/components/schemas/UpdateProjectRequest"
+      - "openapi.yaml#/components/schemas/CreateProjectRequest"
+    acceptance:
+      - id: AC-015
+        text: POST 或 PATCH 的 body 出現 schema 未定義的欄位時回 400,不靜默忽略
+        verified_by: e2e
+

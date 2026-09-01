@@ -87,7 +87,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Project'
         '400':
-          description: 驗證失敗
+          description: 驗證失敗(name 不合規,或 body 出現未定義的欄位)
           content:
             application/json:
               schema:
@@ -152,7 +152,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Project'
         '400':
-          description: 驗證失敗(status 缺漏或不在 enum 內)
+          description: 驗證失敗(status 缺漏、不在 enum 內,或 body 出現未定義的欄位)
           content:
             application/json:
               schema:
@@ -205,6 +205,8 @@ components:
     CreateProjectRequest:
       type: object
       required: [name]
+      # 未定義的欄位一律拒絕,不靜默忽略。理由見 UpdateProjectRequest。
+      additionalProperties: false
       properties:
         name:
           type: string
@@ -224,6 +226,22 @@ components:
 
     UpdateProjectRequest:
       type: object
+      # 未定義的欄位一律拒絕(回 400),不靜默忽略。
+      #
+      # 這不是新原則,是既有原則的第三個實例:CR-001 裁決拒絕「{} 是一次
+      # 成功但什麼都沒做的 PATCH」,TASK-007 拒絕「?status=bogus 回空列表」,
+      # 兩次的理由都是**靜默的錯誤來源比明確的失敗貴**。
+      #
+      # 這個實例最具體的受害者是 ADR-004 自己造出來的:那份決策明說「改既有
+      # 專案的 ownerEmail 目前沒有路徑」,於是 client 遲早會送
+      # PATCH {"ownerEmail": "..."}。靜默忽略的話它拿到 200、負責人沒有變,
+      # 而它沒有任何辦法知道。實測確認過目前就是這個行為。
+      #
+      # 代價要說清楚:additionalProperties: false 讓「新 client 對舊 server
+      # 送新欄位」從「被忽略」變成「400」。在這個 repo 是可接受的 ——
+      # 前後端同一個 commit 部署,沒有版本落差;真的出現落差的那天,
+      # 要處理的是部署方式,不是把驗證放寬。
+      additionalProperties: false
       # status 刻意設為必填 —— 這個 body 目前只有一個欄位,設為選填的話
       # `{}` 會變成一次「成功但什麼都沒做」的 PATCH,是靜默的錯誤來源。
       # 日後若新增其他可更新欄位,把 status 移出 required 即可 —— 放寬
