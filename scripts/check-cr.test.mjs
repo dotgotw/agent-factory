@@ -11,10 +11,11 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { field, rulingVerdict, sectionOf } from './check-cr.mjs';
+import { field, pendingSummary, rulingVerdict, sectionOf } from './check-cr.mjs';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const crDir = join(rootDir, 'change-requests');
@@ -81,4 +82,59 @@ test('sectionOf 只取到下一個同級標題為止', () => {
   assert.equal(sectionOf(doc, '甲').trim(), '一\n二');
   assert.equal(sectionOf(doc, '乙').trim(), '三');
   assert.equal(sectionOf(doc, '丙'), null);
+});
+
+// ---------- 等裁決的 CR ----------
+
+const crMap = (...pairs) => new Map(pairs.map(([id, status]) => [id, { status }]));
+
+test('沒有 proposed → 不印(不製造常駐噪音)', () => {
+  assert.equal(pendingSummary(crMap(['CR-001', 'accepted'], ['CR-002', 'rejected'])), null);
+  assert.equal(pendingSummary(new Map()), null);
+});
+
+test('有 proposed → 印出數量與最舊的一份', () => {
+  const line = pendingSummary(crMap(['CR-001', 'accepted'], ['CR-005', 'proposed']));
+  assert.equal(line, '1 份 CR 仍為 proposed,最舊的一份是 CR-005');
+});
+
+test('「最舊」是編號最小的那一份,不是 Map 的順序', () => {
+  // 插入順序刻意跟編號相反 —— 靠 Map 順序會答錯。
+  const line = pendingSummary(crMap(['CR-012', 'proposed'], ['CR-002', 'proposed']));
+  assert.equal(line, '2 份 CR 仍為 proposed,最舊的一份是 CR-002');
+});
+
+test('編號用數字比,不是字串比', () => {
+  // 今天的編號都是三位數補零,字串比也會對;哪天出現 CR-1000 就不對了。
+  const line = pendingSummary(crMap(['CR-10', 'proposed'], ['CR-9', 'proposed']));
+  assert.equal(line, '2 份 CR 仍為 proposed,最舊的一份是 CR-9');
+});
+
+test('accepted / rejected 不算在內', () => {
+  const line = pendingSummary(
+    crMap(['CR-001', 'accepted'], ['CR-002', 'rejected'], ['CR-003', 'proposed']),
+  );
+  assert.equal(line, '1 份 CR 仍為 proposed,最舊的一份是 CR-003');
+});
+
+test('CLI 的輸出與 change-requests/ 的實際狀態一致', () => {
+  // 不寫死「現在有幾份 proposed」—— 那會讓這條測試在下一張 CR 開出來時就紅,
+  // 而它要驗的是「接線有沒有接上」,不是 repo 今天的狀態。
+  const files = readdirSync(crDir).filter((f) => /^CR-\d+\.md$/.test(f));
+  const proposed = files
+    .map((f) => [f, field(readFileSync(join(crDir, f), 'utf8'), '狀態')])
+    .filter(([, status]) => status === 'proposed')
+    .map(([f]) => f.replace('.md', ''))
+    .sort((a, b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]));
+
+  const out = execFileSync('node', [join(rootDir, 'scripts/check-cr.mjs')], {
+    encoding: 'utf8',
+    cwd: rootDir,
+  });
+
+  if (proposed.length === 0) {
+    assert.doesNotMatch(out, /仍為 proposed/, '沒有 proposed 時不該印這行');
+  } else {
+    assert.match(out, new RegExp(`${proposed.length} 份 CR 仍為 proposed,最舊的一份是 ${proposed[0]}`));
+  }
 });
