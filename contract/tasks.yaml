@@ -113,17 +113,28 @@ tasks:
   - id: TASK-005
     title: 專案負責人通知
     owner: backend
-    # CR-003 已 accepted 並完成階段一,limit/offset 就緒,解除阻擋。
+    # 這張本來驗不了,兩個洞:ownerEmail 沒有寫入路徑(CR-002 只加了回應
+    # 欄位),而「寄出通知」在黑箱裡看不到。ADR-004 兩個都補了 ——
+    # CreateProjectRequest 可帶 ownerEmail,Project 多一個唯讀的
+    # lastNotifiedAt 當作通知這件事的可觀察面。
+    #
+    # AC 的措辭因此改成「可觀察的結果」而不是「內部發生了什麼」:e2e 驗不了
+    # 「信寄出去了」,驗得了「lastNotifiedAt 更新了」。改的是驗收方式,
+    # 不是驗收意圖。
     status: todo
     depends_on: [TASK-002]
     contract_refs:
+      - "openapi.yaml#/paths/~1projects~1{projectId}/patch"
       - "openapi.yaml#/components/schemas/Project"
     acceptance:
       - id: AC-008
-        text: 專案狀態異動時,寄出通知至 ownerEmail
+        text: 設有 ownerEmail 的專案狀態異動後,回應的 lastNotifiedAt 更新為該次通知時間
         verified_by: e2e
       - id: AC-009
-        text: ownerEmail 未設定時略過通知,不得報錯
+        text: 未設 ownerEmail 時略過通知,PATCH 仍回 200 且不出現 lastNotifiedAt
+        verified_by: e2e
+      - id: AC-014
+        text: 狀態未實際改變(如 active 改為 active)時不通知,lastNotifiedAt 不變
         verified_by: e2e
 
   - id: TASK-006

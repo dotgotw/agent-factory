@@ -119,6 +119,19 @@ paths:
     patch:
       operationId: updateProject
       summary: 更新專案狀態(封存 / 取消封存)
+      description: |
+        狀態**實際改變**且該專案設有 ownerEmail 時,會就這次異動通知負責人,
+        並把 Project.lastNotifiedAt 更新為交付時間。
+
+        三個刻意的行為,見 decisions/ADR-004-observable-side-effects.md:
+
+        - **狀態沒有真的改變(例如 active → active)不通知。** 否則一個
+          重試的 client 會反覆騷擾負責人,而那不是「狀態異動」。
+        - **沒有 ownerEmail 就略過通知,且不視為錯誤。** 回應仍是 200,
+          只是沒有 lastNotifiedAt。
+        - **通知失敗不會讓這個 PATCH 失敗。** 這支 API 的職責是改狀態;
+          通知是它的副作用,不是它的前提。失敗時 lastNotifiedAt 不更新 ——
+          於是「沒通知成功」一樣是看得見的。
       parameters:
         - name: projectId
           in: path
@@ -174,6 +187,20 @@ components:
           type: string
           format: email
           description: 專案負責人信箱。選填,見 change-requests/CR-002.md
+        lastNotifiedAt:
+          type: string
+          format: date-time
+          readOnly: true
+          description: |
+            最後一次「就狀態異動通知 ownerEmail」成功交付給寄送機制的時間。
+            未曾通知過就不存在這個欄位。
+
+            這是通知這件事在 contract 上的**唯一可觀察面**,見
+            decisions/ADR-004-observable-side-effects.md。它記的是「已交付給
+            寄送機制」,不是「對方收到了」——後者不在本 API 的能力範圍內,
+            不要讓這個欄位假裝它知道。
+
+            唯讀:不出現在任何 request schema 裡,只由狀態異動產生。
 
     CreateProjectRequest:
       type: object
@@ -183,6 +210,17 @@ components:
           type: string
           minLength: 1
           maxLength: 80
+        ownerEmail:
+          type: string
+          format: email
+          description: |
+            選填。CR-002 把 ownerEmail 加進 Project 的回應,但沒有給它任何
+            寫入路徑 —— 於是那個欄位永遠是空的,而 TASK-005 的驗收踩到了
+            這個洞。建立時可設是最小的補法。
+
+            **改既有專案的 ownerEmail 目前沒有路徑**,那要動
+            UpdateProjectRequest 的 required: [status],等有需求再開 CR ——
+            見 ADR-004「不在範圍」。
 
     UpdateProjectRequest:
       type: object
