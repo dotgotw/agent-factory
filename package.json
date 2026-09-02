@@ -4,6 +4,8 @@
   "scripts": {
     "gen:types": "bash scripts/gen-types.sh",
     "role": "node scripts/role.mjs",
+    "task": "node scripts/task.mjs one",
+    "tasks": "node scripts/task.mjs list",
     "check:drift": "bash scripts/check-drift.sh",
     "check:scope": "node scripts/check-scope.mjs",
     "test:scripts": "node --test scripts/*.test.mjs",

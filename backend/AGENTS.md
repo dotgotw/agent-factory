@@ -6,7 +6,10 @@
 ## Input
 - `contract/openapi.yaml`(唯一 API 真相)
 - `generated/api.ts`(由上者生成的型別)
-- `contract/tasks.yaml` 中 `owner: backend` 的任務
+- 你的任務:`pnpm tasks --owner backend --status todo`(一覽)、
+  `pnpm task TASK-0NN`(單一任務的完整內容)
+  **不要整支讀 `contract/tasks.yaml`** —— 你需要的是其中一列,讀整支要付全部的
+  token。見 `contract/decisions/ADR-005-tasks-are-queried-not-read.md`。
 
 ## Rules
 - 所有 request / response 型別**必須**從 `generated/api.ts` import,不可手寫介面。

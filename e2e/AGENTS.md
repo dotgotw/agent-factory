@@ -4,7 +4,10 @@
 只可寫 `e2e/`。
 
 ## Input
-- `contract/tasks.yaml` 的 `acceptance` 欄位
+- 驗收條件:`pnpm task TASK-0NN`(該任務的 acceptance 與驗收方式)、
+  `pnpm tasks`(所有任務的一覽)、`pnpm tasks --ac AC-017`(反查某條 AC 屬於誰)
+  **不要整支讀 `contract/tasks.yaml`** —— 你需要的是其中一列,讀整支要付全部的
+  token。見 `contract/decisions/ADR-005-tasks-are-queried-not-read.md`。
 - `contract/openapi.yaml`
 
 ## Rules
