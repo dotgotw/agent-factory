@@ -17,7 +17,12 @@ import { load as parseYaml } from 'js-yaml';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { auditTasks, collectAcIds, normalize, repoDeps } from './check-ac.mjs';
-import { STATUSES } from './task.mjs';
+import {
+  collectCoverage,
+  commitExistsInRepo,
+  deriveStatus,
+  loadTasksFrom,
+} from './task-status.mjs';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 // baseDone 預設給空集合:大多數測試不驗退步,不該每一條都收到「取不到 base ref」
@@ -57,11 +62,15 @@ test('e2e 的 AC 沒有測試 → 不是錯,只是還不算 done(ADR-007)', () =
   assert.equal(r.rows[0].status, 'open (0/1 AC)');
 });
 
-test('todo + e2e + 沒測試 → 過(還沒開工不是漂移)', () => {
-  // CR-006 對 CR-005 提案的修正:壓力落在 done 那一刻,不是開工前。
-  for (const status of ['todo', 'in_progress', 'blocked', 'review']) {
-    const r = audit([task({ status, acceptance: [{ id: 'AC-900', verified_by: 'e2e' }] })]);
-    assert.deepEqual(r.errors, [], `status=${status} 不該被要求覆蓋率`);
+test('還沒有測試不是漂移,不管 tasks.yaml 裡寫了什麼', () => {
+  // CR-006 對 CR-005 的修正是「壓力落在 done 那一刻」;ADR-007 之後那一刻是
+  // 算出來的,所以這條測試不再需要窮舉 status 的值 —— 那個欄位已經沒有人讀。
+  // 留一個帶著舊值的案例,證明它真的不影響結果。
+  const acs = [{ id: 'AC-900', text: 'x', verified_by: 'e2e' }];
+  for (const status of [undefined, 'todo', 'done']) {
+    const r = audit([task({ status, acceptance: acs })]);
+    assert.deepEqual(r.errors, [], `status=${status} 不該影響任何判斷`);
+    assert.equal(r.rows[0].status, 'open (0/1 AC)', '狀態一律用算的');
   }
 });
 
@@ -130,11 +139,12 @@ test('manual 的 AC 沒有紀錄 → 不是錯,只是還沒有證據(ADR-007)', 
   assert.equal(r.rows[0].status, 'open (0/1 AC)');
 });
 
-test('規則 1 只對 done:review 期間沒有紀錄不算漂移', () => {
-  for (const status of ['todo', 'in_progress', 'review']) {
-    const r = audit([task({ status, owner: 'frontend', acceptance: [manualAc()] })]);
-    assert.deepEqual(r.errors, [], `status=${status} 不該被要求紀錄`);
-  }
+test('沒有紀錄不算漂移,即使 tasks.yaml 裡寫著 done', () => {
+  // 這是 ADR-007 最容易被誤解的一點:手寫的 done 不再讓任何規則變嚴。
+  // 想標 done 只有一條路 —— 拿出證據。
+  const r = audit([task({ status: 'done', owner: 'frontend', acceptance: [manualAc()] })]);
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.rows[0].status, 'open (0/1 AC)');
 });
 
 test('規則 1:四個欄位任一為空 → 紅', () => {
@@ -292,14 +302,31 @@ test('depends_on 指到不存在的任務 → 紅', () => {
   assert.deepEqual(audit(ok).errors, []);
 });
 
-test('現況的 status / owner / depends_on 全部合法 —— 上線不需要遷移', () => {
+test('現況的 owner / depends_on 全部合法', () => {
   const tasks = parseYaml(readFileSync(join(rootDir, 'contract', 'tasks.yaml'), 'utf8')).tasks;
   const ids = new Set(tasks.map((t) => t.id));
   const roles = repoDeps().roles;
   for (const t of tasks) {
-    assert.ok(STATUSES.includes(t.status), `${t.id} 的 status`);
     assert.ok(roles.includes(t.owner), `${t.id} 的 owner`);
     for (const d of t.depends_on ?? []) assert.ok(ids.has(d), `${t.id} 的 depends_on ${d}`);
+  }
+});
+
+test('過渡期:status 欄位可有可無,有的話必須與算出來的一致', () => {
+  // expand / migrate / contract 的第一拍。architect 的下一張會把這 11 個欄位
+  // 拿掉,所以這裡不能再要求它存在;但只要它還在,它就不該跟事實矛盾 ——
+  // 一個沒有人讀又說錯話的欄位,比沒有欄位糟。
+  //
+  // 這條測試在欄位被拿掉之後會自動變成空迴圈,然後由「不得存在」那一拍取代。
+  const 舊值對應 = { done: 'done', blocked: 'blocked', todo: 'open', in_progress: 'open', review: 'open' };
+  const tasks = loadTasksFrom();
+  const covered = collectCoverage();
+
+  for (const t of tasks) {
+    if (t.status === undefined) continue;
+    const 算出來 = deriveStatus(t, { covered, commitExists: commitExistsInRepo }).status;
+    assert.ok(t.status in 舊值對應, `${t.id} 的 status "${t.status}" 不是舊制的五個值之一`);
+    assert.equal(舊值對應[t.status], 算出來, `${t.id} 寫著 ${t.status},但算出來是 ${算出來}`);
   }
 });
 

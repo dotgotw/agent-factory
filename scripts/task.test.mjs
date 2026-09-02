@@ -168,7 +168,8 @@ test('讀得到 contract/tasks.yaml,每個任務都有 id 與 owner', () => {
   for (const t of tasks) {
     assert.match(t.id, /^TASK-\d+$/);
     assert.ok(t.owner, `${t.id} 缺 owner`);
-    assert.ok(STATUSES.includes(t.status), `${t.id} 的 status "${t.status}" 不在合法清單裡`);
+    // 不要求 status 存在:ADR-007 之後沒有人讀它,architect 的下一張會把它拿掉。
+    // 「有的話要跟算出來的一致」由 check-ac.test.mjs 那條過渡期測試守著。
   }
 });
 
