@@ -3,13 +3,15 @@
 # ⚠️  這支檔案是給腳本讀的,不是給 agent 整支讀的。查詢用:
 #
 #     pnpm task TASK-042                    # 一個任務
-#     pnpm tasks --owner backend --status todo
+#     pnpm tasks --owner backend --status open
 #
 # 見 decisions/ADR-005-tasks-are-queried-not-read.md。同一份決策也規定
 # **本檔只放資料** —— 決策理由住在 CR 或 ADR,用每個任務的 decisions: 欄位指過去。
 #
 # 欄位語意:
-#   status        todo | in_progress | blocked | review | done
+#   (沒有 status 欄位。done 與 blocked 是算出來的,todo / in_progress / review
+#    這類意圖狀態不進 contract —— 見 decisions/ADR-007-status-is-derived-not-declared.md。
+#    要看狀態跑 pnpm tasks,它會算給你,並顯示成 done / blocked / open (n/m AC)。)
 #   verified_by   e2e | manual —— 規格由 CR-006 裁決,執行者是 scripts/check-ac.mjs
 #                 (刻意沒有 none,理由見該腳本的檔頭)
 #   verified_note manual 專用:為什麼自動化測不到
@@ -21,7 +23,6 @@ tasks:
   - id: TASK-001
     title: 建立專案 API
     owner: backend
-    status: done
     depends_on: []
     contract_refs:
       - "openapi.yaml#/paths/~1projects/post"
@@ -36,7 +37,6 @@ tasks:
   - id: TASK-002
     title: 專案列表與單筆查詢
     owner: backend
-    status: done
     depends_on: [TASK-001]
     contract_refs:
       - "openapi.yaml#/paths/~1projects/get"
@@ -55,7 +55,6 @@ tasks:
     decisions:
       - "change-requests/CR-006.md"
       - "change-requests/CR-011.md"
-    status: done
     depends_on: []   # 對 contract 開發,不需等 backend
     contract_refs:
       - "openapi.yaml#/components/schemas/Project"
@@ -84,7 +83,6 @@ tasks:
     owner: backend
     decisions:
       - "change-requests/CR-001.md"
-    status: done
     depends_on: [TASK-002]
     contract_refs:
       - "openapi.yaml#/paths/~1projects~1{projectId}/patch"
@@ -98,7 +96,6 @@ tasks:
     owner: backend
     decisions:
       - "contract/decisions/ADR-004-observable-side-effects.md"
-    status: done
     depends_on: [TASK-002]
     contract_refs:
       - "openapi.yaml#/paths/~1projects~1{projectId}/patch"
@@ -117,7 +114,6 @@ tasks:
   - id: TASK-006
     title: 列表分頁實作(CR-003 階段二)
     owner: backend
-    status: done   # 實作見 #9,驗收測試見 #11
     depends_on: [TASK-002]
     contract_refs:
       - "openapi.yaml#/paths/~1projects/get"
@@ -137,7 +133,6 @@ tasks:
     owner: backend
     decisions:
       - "contract/decisions/ADR-006-no-silent-acceptance.md"
-    status: done
     depends_on: [TASK-006]
     contract_refs:
       - "openapi.yaml#/paths/~1projects/get"
@@ -152,7 +147,6 @@ tasks:
     decisions:
       - "contract/decisions/ADR-006-no-silent-acceptance.md"
       - "contract/decisions/ADR-004-observable-side-effects.md"
-    status: done
     depends_on: [TASK-005]
     contract_refs:
       - "openapi.yaml#/components/schemas/UpdateProjectRequest"
@@ -168,7 +162,6 @@ tasks:
     decisions:
       - "contract/decisions/ADR-006-no-silent-acceptance.md"
       - "change-requests/CR-012.md"
-    status: done
     depends_on: [TASK-008]
     contract_refs:
       - "openapi.yaml#/components/schemas/Error"
@@ -183,7 +176,6 @@ tasks:
     decisions:
       - "contract/decisions/ADR-006-no-silent-acceptance.md"
       - "change-requests/CR-012.md"
-    status: done
     depends_on: [TASK-009]
     contract_refs:
       - "openapi.yaml#/paths/~1projects/post"
@@ -198,7 +190,6 @@ tasks:
     owner: backend
     decisions:
       - "contract/decisions/ADR-006-no-silent-acceptance.md"
-    status: done
     depends_on: []
     contract_refs:
       - "openapi.yaml#/paths/~1projects/get"
