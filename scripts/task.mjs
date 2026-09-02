@@ -39,8 +39,12 @@ const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 /**
  * 合法的狀態值。與 contract/tasks.yaml 檔頭的欄位語意同一份清單。
  *
- * 這裡沒有機器保證的來源 —— tasks.yaml 的檔頭是給人讀的註解。清單放這裡是為了
- * 讓「--status 打錯字」報錯而不是靜默回空;它不驗證 tasks.yaml 自己的資料。
+ * tasks.yaml 的檔頭是給人讀的註解,沒有機器保證,所以這份清單是那五個值唯一的
+ * 可執行來源:CLI 用它擋「--status 打錯字」,check-ac.mjs import 它驗 tasks.yaml
+ * 自己的資料(打錯的 status 會讓那張任務從查詢與所有 done 規則裡消失)。
+ *
+ * **不要在別處再寫一份。** 兩份清單遲早會分岔,而分岔的症狀是「CLI 說這個值
+ * 不合法,檢查卻放它過」——那比沒有檢查更難查。
  */
 export const STATUSES = ['todo', 'in_progress', 'blocked', 'review', 'done'];
 

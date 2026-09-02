@@ -21,6 +21,25 @@
  *
  * 刻意沒有 verified_by: none —— 零成本的逃生門會把單向漂移制度化。
  *
+ * ## tasks.yaml 的三個欄位不能打錯字
+ *
+ * status / owner / depends_on 打錯字都會**靜默**通過,而且後果不只是「查不到」:
+ *
+ *   status: done  → doen            這張任務從 --status 查詢與所有 done 規則裡消失
+ *   owner: backend → backedn        見下,最嚴重的一個
+ *   depends_on: [TASK-808]          依賴指向不存在的任務,沒有人出聲
+ *
+ * owner 那個會**把既有的檢查無聲停用**:下面 verified_record 的過期偵測是
+ * `ownerPaths(task.owner)` 回空就整條跳過,而未知的 owner 正好回空。一個錯字
+ * 就能讓 CR-011 裁決寫進去的守衛不再出聲,且沒有任何紅線提醒。
+ *
+ * 三條都判紅,理由與 decisions 指標同一條:打錯字很便宜。
+ *
+ * 合法值一律**引用既有的來源,不新寫一份**:status 從 task.mjs import,
+ * owner 讀 scope.json(本檔本來就在讀),depends_on 對照同一份 tasks.yaml 的
+ * id 集合。前例是 check-scope.mjs import role.mjs 的 classifyPath —— 兩邊各寫
+ * 一份,遲早會出現一邊放行、另一邊擋下的組合。
+ *
  * ## decisions 指標(ADR-005)
  *
  * 任務的 decisions: 列的是「這張任務的理由住在哪」。指到不存在的檔案 → 紅。
@@ -62,6 +81,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { load as parseYaml } from 'js-yaml';
 import { loadScope } from './role.mjs';
+import { STATUSES } from './task.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(here, '..');
@@ -104,6 +124,9 @@ export function auditTasks(tasks, covered, deps = {}) {
     changedSince = () => [],
     ownerPaths = () => [],
     decisionExists = () => true,
+    // null = 呼叫端沒給,不驗 owner。repoDeps() 一定會給;沒給而靜默跳過的風險
+    // 由「repoDeps 真的問得到 scope.json」那條測試守著。
+    roles = null,
   } = deps;
 
   const errors = [];
@@ -111,9 +134,29 @@ export function auditTasks(tasks, covered, deps = {}) {
   const rows = [];
   const declared = new Set();
 
+  const taskIds = new Set(tasks.map((t) => t.id));
+
   for (const task of tasks) {
     const acs = task.acceptance ?? [];
     const cells = [];
+
+    // 三個欄位的錯字檢查。見檔頭「tasks.yaml 的三個欄位不能打錯字」。
+    if (!STATUSES.includes(task.status)) {
+      errors.push(
+        `${task.id}: status "${task.status ?? '(缺)'}" 不是合法值。可用: ${STATUSES.join('、')}`,
+      );
+    }
+    if (roles && !roles.includes(task.owner)) {
+      errors.push(
+        `${task.id}: owner "${task.owner ?? '(缺)'}" 不是 scope.json 裡的角色` +
+          `(${roles.join('、')})—— 未知的 owner 會讓 verified_record 的過期偵測靜默關掉`,
+      );
+    }
+    for (const dep of task.depends_on ?? []) {
+      if (!taskIds.has(dep)) {
+        errors.push(`${task.id}: depends_on 指到不存在的 ${dep}`);
+      }
+    }
 
     // decisions: 指到的檔案必須存在。
     //
@@ -278,6 +321,7 @@ function git(args) {
 export function repoDeps(scope = loadScope()) {
   return {
     ownerPaths: (owner) => scope.roles[owner]?.allow ?? [],
+    roles: Object.keys(scope.roles),
     decisionExists: (path) => existsSync(join(rootDir, path)),
     commitExists: (sha) => git(['rev-parse', '--verify', '--quiet', `${sha}^{commit}`]) !== null,
     changedSince: (sha, paths) =>
