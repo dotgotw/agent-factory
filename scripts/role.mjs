@@ -35,6 +35,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+import { pitsFor, scanPits } from './pits.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const rootDir = join(here, '..');
@@ -245,6 +246,18 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     process.exit(3);
   }
 
+  // --pits 是查詢,不是開場橫幅:只印坑註解,不印角色那一段。
+  if (process.argv.includes('--pits')) {
+    const mine = pitsFor(role, scanPits());
+    if (mine.length === 0) {
+      console.log(`沒有標給 ${role} 的坑註解。`);
+    } else {
+      console.log(`標給 ${role} 的坑註解(${mine.length}):`);
+      for (const p of mine) console.log(`  ${p.file}:${p.line}  ${p.note}`);
+    }
+    process.exit(0);
+  }
+
   const allowed = allowedPathsFor(role, config);
   if (!allowed) {
     console.error(`❌ 未知角色: ${role}`);
@@ -269,5 +282,16 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     console.log(`可夾帶的衍生路徑: ${derived.join('、')}`);
     console.log('  這些不是你的檔案,是生成器的輸出。你可以在自己的 PR 裡帶著');
     console.log('  重新生成的結果一起送,但內容對不對由 check:drift 說了算。');
+  }
+
+  // 坑註解:**一行計數**,而且放在最後 —— 讀的人最後看到的是它(ADR-009 補充)。
+  //
+  // 常數長度是刻意的:這段輸出在 SessionStart hook 裡,每個 session 都要付,
+  // 而且是注意力最稀缺的那一刻。一條坑很有用,二十條是一面牆,而牆會被跳過 ——
+  // 連同它上面那十行一起。所以不管累積到幾條,這裡永遠只有一行。
+  const mine = pitsFor(role, scanPits());
+  if (mine.length > 0) {
+    console.log('');
+    console.log(`有 ${mine.length} 條標給你的坑註解(pnpm role --pits 看內容)`);
   }
 }

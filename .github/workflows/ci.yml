@@ -60,6 +60,12 @@ jobs:
       - name: AC coverage
         run: pnpm check:ac
 
+      # ②' 坑註解的形狀:用了標記就必須指名一個角色。
+      #     沒有指名的話 pnpm role 不會把它端到任何人面前 —— 那則註解等於寫在
+      #     沒有人會經過的地方,也就是 ADR-009 要修的那個問題本身。
+      - name: Pit notes
+        run: pnpm check:pits
+
       # ③ 三個 scope 各自 typecheck。contract 與實作不一致會在這裡爆。
       - name: Typecheck
         run: pnpm typecheck
