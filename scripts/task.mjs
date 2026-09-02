@@ -3,7 +3,7 @@
  * scripts/task.mjs —— 任務資料的查詢介面(ADR-005)
  *
  *   pnpm task TASK-042                        一個任務的完整內容
- *   pnpm tasks --owner backend --status todo  條件查詢
+ *   pnpm tasks --owner backend --status open  條件查詢
  *   pnpm tasks --ac AC-017                    反查某條 AC 屬於哪個任務
  *
  * ## 為什麼有這支
@@ -33,20 +33,31 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { load as parseYaml } from 'js-yaml';
 import { loadScope } from './role.mjs';
+import { blockedByCrs } from './check-cr.mjs';
+import {
+  STATUSES,
+  collectCoverage,
+  commitExistsInRepo,
+  deriveStatus,
+  formatStatus,
+} from './task-status.mjs';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
- * 合法的狀態值。與 contract/tasks.yaml 檔頭的欄位語意同一份清單。
+ * 合法的狀態值。ADR-007 之後這三個是**算出來的**,不是 tasks.yaml 裡寫的:
  *
- * tasks.yaml 的檔頭是給人讀的註解,沒有機器保證,所以這份清單是那五個值唯一的
- * 可執行來源:CLI 用它擋「--status 打錯字」,check-ac.mjs import 它驗 tasks.yaml
- * 自己的資料(打錯的 status 會讓那張任務從查詢與所有 done 規則裡消失)。
+ *   done     每一條 AC 都有證據
+ *   blocked  有一份 proposed 的 CR 指名它
+ *   open     其餘,顯示成 open (2/3 AC)
  *
- * **不要在別處再寫一份。** 兩份清單遲早會分岔,而分岔的症狀是「CLI 說這個值
- * 不合法,檢查卻放它過」——那比沒有檢查更難查。
+ * 舊的五個值裡,todo / in_progress / review 不再是合法的查詢條件 —— 它們是
+ * 意圖不是保證,ADR-007 把它們移出 contract。想知道「誰正在做」,看開著的
+ * PR 上的 agent:<role> label,那個訊號有人維護。
+ *
+ * 清單與推導都住在 task-status.mjs,這裡只是轉出去給 CLI 用。
  */
-export const STATUSES = ['todo', 'in_progress', 'blocked', 'review', 'done'];
+export { STATUSES } from './task-status.mjs';
 
 const FLAGS = ['--owner', '--status', '--ac'];
 
@@ -103,6 +114,19 @@ export function parseArgs(argv, { roles = [], statuses = STATUSES } = {}) {
   return { mode: 'list', id, filters, errors };
 }
 
+/**
+ * 把算出來的狀態掛到每張任務上。
+ *
+ * 之後的純函式只讀 task.derived —— 推導的規則留在 task-status.mjs 一份,
+ * 這裡不重算,測試也不必為了測顯示而去準備 git 與 e2e 的環境。
+ */
+export function withDerived(tasks, { covered, commitExists, blockedBy = new Map() } = {}) {
+  return tasks.map((task) => ({
+    ...task,
+    derived: deriveStatus(task, { covered, commitExists, blockedBy: blockedBy.get(task.id) ?? [] }),
+  }));
+}
+
 export function findTask(tasks, id) {
   return tasks.find((t) => t.id === id) ?? null;
 }
@@ -119,7 +143,7 @@ export function findAc(tasks, acId) {
 export function filterTasks(tasks, filters) {
   return tasks.filter((t) => {
     if (filters.owner && t.owner !== filters.owner) return false;
-    if (filters.status && t.status !== filters.status) return false;
+    if (filters.status && t.derived?.status !== filters.status) return false;
     if (filters.ac && !(t.acceptance ?? []).some((a) => a.id === filters.ac)) return false;
     return true;
   });
@@ -147,9 +171,15 @@ export function formatTask(task) {
   const out = [];
   out.push(`${task.id}  ${task.title ?? ''}`);
   out.push(
-    `  owner: ${task.owner ?? '(未指定)'}    status: ${task.status ?? '(未指定)'}` +
+    `  owner: ${task.owner ?? '(未指定)'}    status: ${task.derived ? formatStatus(task.derived) : '(未算)'}` +
       `    depends_on: ${(task.depends_on ?? []).join('、') || '(無)'}`,
   );
+  // 擋著它的 CR 一律列出來,即使它已經 done —— done 蓋過 blocked 是狀態的選擇,
+  // 不是把資訊藏起來的理由。
+  if (task.derived?.blockedBy?.length) {
+    const 前綴 = task.derived.status === 'blocked' ? '卡在' : '有人提議改它';
+    out.push(`  ${前綴}: ${task.derived.blockedBy.join('、')}(proposed 的 CR)`);
+  }
   if (task.blocked_reason) out.push(`  卡在: ${task.blocked_reason}`);
 
   if ((task.contract_refs ?? []).length > 0) {
@@ -192,7 +222,8 @@ export function formatList(tasks, filters, all) {
       if (hit) {
         out.push(
           `(${filters.ac} 存在,屬於 ${hit.task.id} —— owner: ${hit.task.owner}、` +
-            `status: ${hit.task.status},但不符合你給的其他條件)`,
+            `status: ${hit.task.derived ? formatStatus(hit.task.derived) : '(未算)'},` +
+            `但不符合你給的其他條件)`,
         );
       }
     }
@@ -203,7 +234,7 @@ export function formatList(tasks, filters, all) {
   for (const t of tasks) {
     const acs = (t.acceptance ?? []).map((a) => a.id).join(' ') || '(無 AC)';
     out.push(
-      `${t.id.padEnd(w)}  ${String(t.status ?? '').padEnd(11)}${String(t.owner ?? '').padEnd(9)}` +
+      `${t.id.padEnd(w)}  ${(t.derived ? formatStatus(t.derived) : '').padEnd(16)}${String(t.owner ?? '').padEnd(9)}` +
         `${t.title ?? ''}`,
     );
     out.push(`${''.padEnd(w)}  ${acs}`);
@@ -214,7 +245,11 @@ export function formatList(tasks, filters, all) {
 
 // --- CLI ---
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
-  const tasks = loadTasks();
+  const tasks = withDerived(loadTasks(), {
+    covered: collectCoverage(),
+    commitExists: commitExistsInRepo,
+    blockedBy: blockedByCrs(),
+  });
   const roles = Object.keys(loadScope().roles);
   const { mode, id, filters, errors } = parseArgs(process.argv.slice(2), { roles });
 

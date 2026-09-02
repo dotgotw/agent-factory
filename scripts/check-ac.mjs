@@ -75,40 +75,31 @@
  *     不是紅,是**安靜地不再提醒**,而這正是本檔要防的那種單向漂移。
  *     解析不出 commit 那半會紅,過期那半不會。
  */
-import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { load as parseYaml } from 'js-yaml';
 import { loadScope } from './role.mjs';
-import { STATUSES } from './task.mjs';
+import { blockedByCrs } from './check-cr.mjs';
+import {
+  acEvidence,
+  collectAcIds,
+  collectCoverage,
+  commitExistsInRepo,
+  deriveStatus,
+  canonicalAcceptance,
+  snapshotAt,
+  formatStatus,
+  git,
+} from './task-status.mjs';
+
+export { collectAcIds, normalize } from './task-status.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(here, '..');
 
-const VALID_VERIFIED_BY = ['e2e', 'manual'];
-const RECORD_FIELDS = ['at', 'who', 'commit', 'saw'];
 
 // ---------- 純函式(供 check-ac.test.mjs 使用) ----------
-
-/**
- * 比對 saw 與 text 用的正規化。
- *
- * 去空白、去標點、轉小寫。故意到此為止 —— 這條規則擋的是「把 text 抄一遍」,
- * 不是造假(抄完改兩個字就過得了)。做得更聰明只會讓它的下限看起來比實際高。
- */
-export function normalize(text) {
-  return (text ?? '')
-    .toLowerCase()
-    .replace(/[\s、,，。.;;::!!??「」『』()()\[\]-]/g, '');
-}
-
-/** 測試檔文字裡出現過的 AC 編號。 */
-export function collectAcIds(specText) {
-  // (?!\w) 讓 "AC-0XX" 不會被截成 "AC-0" —— 截出來的半個編號會變成一則
-  // 假的「這個 AC 不存在」提醒,而提醒一旦不可信就沒有人會讀。
-  return new Set(specText.match(/AC-\d+(?!\w)/g) ?? []);
-}
 
 /**
  * 比對 tasks.yaml 與測試覆蓋。回傳 { rows, errors, warnings }。
@@ -127,12 +118,18 @@ export function auditTasks(tasks, covered, deps = {}) {
     // null = 呼叫端沒給,不驗 owner。repoDeps() 一定會給;沒給而靜默跳過的風險
     // 由「repoDeps 真的問得到 scope.json」那條測試守著。
     roles = null,
+    // 哪些任務被 proposed 的 CR 擋著。Map(taskId -> [CR id])。
+    blockedBy = new Map(),
+    // base ref 的快照 { done, acceptance };null = 取不到那個 ref(見退步比對)。
+    base = null,
+    baseRef = 'origin/main',
   } = deps;
 
   const errors = [];
   const warnings = [];
   const rows = [];
   const declared = new Set();
+  const doneNow = new Set();
 
   const taskIds = new Set(tasks.map((t) => t.id));
 
@@ -140,12 +137,8 @@ export function auditTasks(tasks, covered, deps = {}) {
     const acs = task.acceptance ?? [];
     const cells = [];
 
-    // 三個欄位的錯字檢查。見檔頭「tasks.yaml 的三個欄位不能打錯字」。
-    if (!STATUSES.includes(task.status)) {
-      errors.push(
-        `${task.id}: status "${task.status ?? '(缺)'}" 不是合法值。可用: ${STATUSES.join('、')}`,
-      );
-    }
+    // 兩個欄位的錯字檢查。status 那條在 ADR-007 之後作廢 —— 沒有人讀那個欄位了,
+    // 而 architect 的下一張會把它從 tasks.yaml 整個拿掉。
     if (roles && !roles.includes(task.owner)) {
       errors.push(
         `${task.id}: owner "${task.owner ?? '(缺)'}" 不是 scope.json 裡的角色` +
@@ -173,112 +166,105 @@ export function auditTasks(tasks, covered, deps = {}) {
       }
     }
 
+    // 每條 AC 有沒有證據。規則住在 task-status.mjs —— pnpm tasks 用的是同一份,
+    // 不是兩份(前例:check-scope.mjs import role.mjs 的 classifyPath)。
     for (const ac of acs) {
       declared.add(ac.id);
-      const by = ac.verified_by;
+      const { ok, problem } = acEvidence(ac, { covered, commitExists });
 
-      if (!by) {
-        errors.push(`${task.id} / ${ac.id}: 缺少 verified_by(不給預設值,見 CR-006)`);
-        cells.push(`${ac.id} ✗缺欄位`);
+      if (problem) {
+        // 宣告本身壞掉:缺欄位、非法值、saw 抄一遍、commit 打錯字。判紅。
+        //
+        // 「還沒有證據」不在這裡 —— 那不是錯誤,只是還不是 done。這條線是
+        // ADR-007 的核心:狀態用算的之後,缺證據的後果是「不算 done」,
+        // 而不是「有人說謊」。壞掉的宣告仍然是說謊。
+        errors.push(`${task.id} / ${ac.id}: ${problem}`);
+        cells.push(`${ac.id} ✗`);
         continue;
       }
-      if (!VALID_VERIFIED_BY.includes(by)) {
-        errors.push(
-          `${task.id} / ${ac.id}: verified_by "${by}" 非法,必須是 ${VALID_VERIFIED_BY.join(' | ')}` +
-            `(刻意沒有 none)`,
+
+      if (ac.verified_by === 'e2e') {
+        cells.push(`${ac.id} ${ok ? '✓' : '—'}`);
+        continue;
+      }
+
+      if (!ac.verified_record) {
+        cells.push(`${ac.id} manual`);
+        continue;
+      }
+
+      // 紀錄合格。再問它有沒有過期 —— CR-011:manual 的 done 是快照,e2e 的是活的。
+      const commit = String(ac.verified_record.commit).trim();
+      const paths = ownerPaths(task.owner);
+      const since = paths.length > 0 ? changedSince(commit, paths) : [];
+      if (since.length > 0) {
+        warnings.push(
+          `${task.id} / ${ac.id}: 驗的是 ${commit},但 ${task.owner} 的路徑` +
+            `(${paths.join('、')})之後有 ${since.length} 個 commit —— 這筆紀錄可能不再` +
+            `對應現在的程式碼。manual 的 done 是快照,不是活的(CR-011)`,
         );
-        cells.push(`${ac.id} ✗非法值`);
-        continue;
-      }
-
-      if (by === 'manual') {
-        const note = (ac.verified_note ?? '').trim();
-        if (!note) {
-          errors.push(
-            `${task.id} / ${ac.id}: verified_by 是 manual,必須用 verified_note 寫明` +
-              `為什麼自動化測不到 —— 「還沒空寫」不成立,那種情況任務該留在 review`,
-          );
-          cells.push(`${ac.id} ✗缺理由`);
-          continue;
-        }
-
-        const record = ac.verified_record;
-        const where = `${task.id} / ${ac.id}`;
-
-        // 規則 1:done 才強制「有紀錄」。壓力落在標 done 那一刻,跟覆蓋率同一個理由。
-        if (!record) {
-          if (task.status === 'done') {
-            errors.push(
-              `${where}: 標成 done 的 manual AC 必須有 verified_record` +
-                `(${RECORD_FIELDS.join(' / ')})—— 沒有紀錄的人工驗收等於沒發生`,
-            );
-            cells.push(`${ac.id} ✗缺紀錄`);
-          } else {
-            cells.push(`${ac.id} manual`);
-          }
-          continue;
-        }
-
-        // 紀錄一旦存在,下面的規則不分狀態一律適用。
-        const missing = RECORD_FIELDS.filter((f) => !String(record[f] ?? '').trim());
-        if (missing.length > 0) {
-          errors.push(`${where}: verified_record 的 ${missing.join('、')} 是空的`);
-          cells.push(`${ac.id} ✗紀錄不全`);
-          continue;
-        }
-
-        // 規則 2:saw 抄一遍 text 等於沒驗。
-        if (normalize(record.saw) === normalize(ac.text)) {
-          errors.push(
-            `${where}: verified_record.saw 只是把 text 抄一遍 —— saw 要寫「看到什麼」,` +
-              `不是複述驗收條件`,
-          );
-          cells.push(`${ac.id} ✗saw複述`);
-          continue;
-        }
-
-        // 規則 3:commit 解析不出來是打錯字(紅);解析得出但之後改過是過期(⚠️)。
-        const commit = String(record.commit).trim();
-        if (!commitExists(commit)) {
-          errors.push(`${where}: verified_record.commit "${commit}" 在這個 repo 裡解析不出來`);
-          cells.push(`${ac.id} ✗commit`);
-          continue;
-        }
-
-        const paths = ownerPaths(task.owner);
-        const since = paths.length > 0 ? changedSince(commit, paths) : [];
-        if (since.length > 0) {
-          warnings.push(
-            `${where}: 驗的是 ${commit},但 ${task.owner} 的路徑(${paths.join('、')})` +
-              `之後有 ${since.length} 個 commit —— 這筆紀錄可能不再對應現在的程式碼。` +
-              `manual 的 done 是快照,不是活的(CR-011)`,
-          );
-          cells.push(`${ac.id} manual ⚠️`);
-        } else {
-          cells.push(`${ac.id} manual ✓`);
-        }
-        continue;
-      }
-
-      // verified_by: e2e —— 只在 done 這一刻強制。
-      const hit = covered.has(ac.id);
-      if (task.status === 'done' && !hit) {
-        errors.push(
-          `${task.id} / ${ac.id}: 任務標成 done,但 e2e/ 裡找不到這個編號。` +
-            `要標 done,先讓 AC 有測試`,
-        );
-        cells.push(`${ac.id} ✗無測試`);
+        cells.push(`${ac.id} manual ⚠️`);
       } else {
-        cells.push(`${ac.id} ${hit ? '✓' : '—'}`);
+        cells.push(`${ac.id} manual ✓`);
       }
     }
+
+    const derived = deriveStatus(task, {
+      covered,
+      commitExists,
+      blockedBy: blockedBy.get(task.id) ?? [],
+    });
+    if (derived.status === 'done') doneNow.add(task.id);
 
     rows.push({
       id: task.id,
       owner: task.owner ?? '',
-      status: task.status ?? '',
+      status: formatStatus(derived),
       cells,
     });
+  }
+
+  // 退步比對 —— ADR-007 唯一的陷阱,漏掉它整個決策就是淨損失。
+  //
+  // 推導之前,「done 的任務掉了測試」會紅。推導之後,同一件事只會讓那張任務
+  // 安靜地從 done 變回 open —— 把一條紅線換成一次無聲的狀態變化,方向跟這個
+  // repo 的每一條規則都相反。所以要有基準:在 base ref 上是 done、在這裡不是,
+  // 就是退步。要合法地退出 done,得動那張任務的 AC —— 那是 contract 變更,
+  // 本來就該被看見。
+  if (base) {
+    for (const id of base.done) {
+      if (doneNow.has(id)) continue;
+
+      const now = tasks.find((t) => t.id === id);
+      const acChanged = !now || base.acceptance.get(id) !== canonicalAcceptance(now);
+
+      if (acChanged) {
+        // 動了 AC 而退出 done —— 那是 contract 變更,只有 architect 改得到,
+        // 而且 CODEOWNERS 要求人類看過。ADR-007 說這是**合法**的退出方式,
+        // 所以這裡出聲但不擋。
+        //
+        // 判紅的話會產生一個沒有人解得開的死結:architect 在一張 done 的任務上
+        // 新增一條 AC,那張 PR 就是紅的,而測試在 e2e/(qa 的),一張 PR 只能掛
+        // 一個角色 —— 沒有任何一個人補得起來。
+        warnings.push(
+          `${id} 在 ${baseRef} 上是 done,在這裡不是 —— 但它的 AC 也動了` +
+            (now ? '' : '(整張任務被刪掉)') +
+            `,當成刻意的 contract 變更。若不是刻意的,那是一次無聲的退步。`,
+        );
+        continue;
+      }
+
+      errors.push(
+        `${id} 在 ${baseRef} 上是 done,在這裡不是,而它的 AC 一個字都沒動 ` +
+          `—— 是不是掉了測試,或 verified_record 壞了?`,
+      );
+    }
+  } else {
+    // 取不到基準時要出聲。安靜跳過等於這一輪沒有退步偵測,而沒有人會知道。
+    warnings.push(
+      `取不到 ${baseRef},這一輪沒有做退步比對 —— 淺 clone 或缺少 remote 都會這樣。` +
+        `CI 兩個 job 都是 fetch-depth: 0,若這行出現在 CI 上,那是設定退化了。`,
+    );
   }
 
   // 反方向:測試引用了 tasks.yaml 沒有的編號。
@@ -292,19 +278,6 @@ export function auditTasks(tasks, covered, deps = {}) {
   }
 
   return { rows, errors, warnings };
-}
-
-/** 跑 git,失敗回傳 null(commit 不存在、或這裡不是 git repo)。 */
-function git(args) {
-  try {
-    return execFileSync('git', args, {
-      cwd: rootDir,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
-  } catch {
-    return null;
-  }
 }
 
 /**
@@ -323,7 +296,7 @@ export function repoDeps(scope = loadScope()) {
     ownerPaths: (owner) => scope.roles[owner]?.allow ?? [],
     roles: Object.keys(scope.roles),
     decisionExists: (path) => existsSync(join(rootDir, path)),
-    commitExists: (sha) => git(['rev-parse', '--verify', '--quiet', `${sha}^{commit}`]) !== null,
+    commitExists: commitExistsInRepo,
     changedSince: (sha, paths) =>
       (git(['log', '--format=%h', `${sha}..HEAD`, '--', ...paths]) ?? '')
         .split('\n')
@@ -347,19 +320,26 @@ function main() {
 
   const specFiles = readdirSync(e2eDir).filter((f) => f.endsWith('.spec.ts'));
   if (specFiles.length === 0) {
-    // 一個測試檔都沒有,卻有 done 的任務 —— 那不是「乾淨」,是檢查失去了對象。
+    // 一個測試檔都沒有 —— 那不是「乾淨」,是檢查失去了對象:每一張任務都會
+    // 算成 open,而退步比對會把它們全部判紅。與其那樣,不如直說。
     console.error(`❌ ${e2eDir} 裡沒有任何 *.spec.ts,無法判斷 AC 覆蓋。`);
     process.exit(2);
   }
-  const covered = collectAcIds(
-    specFiles.map((f) => readFileSync(join(e2eDir, f), 'utf8')).join('\n'),
-  );
+  const covered = collectCoverage(e2eDir);
 
-  const { rows, errors, warnings } = auditTasks(tasks, covered, repoDeps());
+  // base ref 可以覆寫,方便在別的分支上手動比對;預設是 origin/main。
+  const baseRef = process.env.AC_BASE_REF ?? 'origin/main';
+
+  const { rows, errors, warnings } = auditTasks(tasks, covered, {
+    ...repoDeps(),
+    blockedBy: blockedByCrs(),
+    base: snapshotAt(baseRef),
+    baseRef,
+  });
 
   console.log(`檢查 ${tasks.length} 個任務、${specFiles.length} 個測試檔`);
   console.log('');
-  const w = { id: 10, owner: 9, status: 8 };
+  const w = { id: 10, owner: 9, status: 16 };
   console.log(`${'任務'.padEnd(w.id)}${'owner'.padEnd(w.owner)}${'status'.padEnd(w.status)}AC`);
   for (const r of rows) {
     console.log(

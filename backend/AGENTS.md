@@ -6,8 +6,10 @@
 ## Input
 - `contract/openapi.yaml`(唯一 API 真相)
 - `generated/api.ts`(由上者生成的型別)
-- 你的任務:`pnpm tasks --owner backend --status todo`(一覽)、
-  `pnpm task TASK-0NN`(單一任務的完整內容)
+- 你的任務:`pnpm tasks --owner backend --status open`(還沒做完的)、
+  `pnpm task TASK-0NN`(單一任務的完整內容)。狀態是**算出來的**:每條 AC
+  都有證據就是 done,有 proposed 的 CR 指名它就是 blocked,其餘是
+  `open (2/3 AC)`。見 ADR-007。
   **不要整支讀 `contract/tasks.yaml`** —— 你需要的是其中一列,讀整支要付全部的
   token。見 `contract/decisions/ADR-005-tasks-are-queried-not-read.md`。
 
