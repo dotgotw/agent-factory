@@ -21,12 +21,10 @@
  *
  * 刻意沒有 verified_by: none —— 零成本的逃生門會把單向漂移制度化。
  *
- * ## tasks.yaml 的三個欄位不能打錯字
+ * ## tasks.yaml 的欄位
  *
- * status / owner / depends_on 打錯字都會**靜默**通過,而且後果不只是「查不到」:
- *
- *   status: done  → doen            這張任務從 --status 查詢與所有 done 規則裡消失
- *   owner: backend → backedn        見下,最嚴重的一個
+ *   status                          **不得存在**(ADR-007:狀態是算出來的)
+ *   owner: backend → backedn        打錯字會靜默通過,見下,最嚴重的一個
  *   depends_on: [TASK-808]          依賴指向不存在的任務,沒有人出聲
  *
  * owner 那個會**把既有的檢查無聲停用**:下面 verified_record 的過期偵測是
@@ -137,8 +135,19 @@ export function auditTasks(tasks, covered, deps = {}) {
     const acs = task.acceptance ?? [];
     const cells = [];
 
-    // 兩個欄位的錯字檢查。status 那條在 ADR-007 之後作廢 —— 沒有人讀那個欄位了,
-    // 而 architect 的下一張會把它從 tasks.yaml 整個拿掉。
+    // status 不得存在(ADR-007 第 5 拍)。
+    //
+    // 欄位拿掉之後,誰再貼一個回去都不會有人出聲 —— 那是一句沒有人讀的謊,
+    // 而且它看起來像資訊。連「說對話」的也不行:狀態是算出來的,重複一份就是
+    // 等著漂移,而漂移的方向永遠是「寫的人忘了改」。
+    if (task.status !== undefined) {
+      errors.push(
+        `${task.id}: 有 status 欄位。狀態是算出來的(ADR-007),tasks.yaml 不再宣告它 —— ` +
+          `想知道現在算成什麼,跑 pnpm task ${task.id}`,
+      );
+    }
+
+    // 另外兩個欄位的錯字檢查。
     if (roles && !roles.includes(task.owner)) {
       errors.push(
         `${task.id}: owner "${task.owner ?? '(缺)'}" 不是 scope.json 裡的角色` +

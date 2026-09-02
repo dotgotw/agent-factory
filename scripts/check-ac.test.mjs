@@ -47,7 +47,9 @@ const manualAc = (over = {}) => ({
   verified_note: '黑箱 e2e 打不到畫面',
   ...over,
 });
-const task = (over = {}) => ({ id: 'TASK-900', owner: 'backend', status: 'done', ...over });
+// 沒有 status —— 那個欄位不得存在,fixture 帶著它會讓每一條測試都紅在同一個
+// 地方,而不是紅在它各自要驗的那件事上。
+const task = (over = {}) => ({ id: 'TASK-900', owner: 'backend', ...over });
 
 test('done + e2e + 有測試 → 過', () => {
   const r = audit([task({ acceptance: [{ id: 'AC-900', verified_by: 'e2e' }] })], ['AC-900']);
@@ -63,16 +65,15 @@ test('e2e 的 AC 沒有測試 → 不是錯,只是還不算 done(ADR-007)', () =
   assert.equal(r.rows[0].status, 'open (0/1 AC)');
 });
 
-test('還沒有測試不是漂移,不管 tasks.yaml 裡寫了什麼', () => {
+test('還沒有測試不是漂移', () => {
   // CR-006 對 CR-005 的修正是「壓力落在 done 那一刻」;ADR-007 之後那一刻是
-  // 算出來的,所以這條測試不再需要窮舉 status 的值 —— 那個欄位已經沒有人讀。
-  // 留一個帶著舊值的案例,證明它真的不影響結果。
-  const acs = [{ id: 'AC-900', text: 'x', verified_by: 'e2e' }];
-  for (const status of [undefined, 'todo', 'done']) {
-    const r = audit([task({ status, acceptance: acs })]);
-    assert.deepEqual(r.errors, [], `status=${status} 不該影響任何判斷`);
-    assert.equal(r.rows[0].status, 'open (0/1 AC)', '狀態一律用算的');
-  }
+  // 算出來的,所以缺測試只影響算出來的狀態,不產生錯誤。
+  //
+  // 上一版這裡窮舉 status 的值來證明它不影響結果 —— 那個窮舉現在本身就是違規,
+  // 見下面的「不得存在」。
+  const r = audit([task({ acceptance: [{ id: 'AC-900', text: 'x', verified_by: 'e2e' }] })]);
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.rows[0].status, 'open (0/1 AC)');
 });
 
 test('manual 不要求 e2e 覆蓋率(有 note、有紀錄就過)', () => {
@@ -140,10 +141,10 @@ test('manual 的 AC 沒有紀錄 → 不是錯,只是還沒有證據(ADR-007)', 
   assert.equal(r.rows[0].status, 'open (0/1 AC)');
 });
 
-test('沒有紀錄不算漂移,即使 tasks.yaml 裡寫著 done', () => {
-  // 這是 ADR-007 最容易被誤解的一點:手寫的 done 不再讓任何規則變嚴。
-  // 想標 done 只有一條路 —— 拿出證據。
-  const r = audit([task({ status: 'done', owner: 'frontend', acceptance: [manualAc()] })]);
+test('沒有紀錄不算漂移,只是還不算 done', () => {
+  // ADR-007 最容易被誤解的一點:想標 done 只有一條路 —— 拿出證據。
+  // 「手寫一個 done」這條路現在連寫都寫不得,見下面的「不得存在」。
+  const r = audit([task({ owner: 'frontend', acceptance: [manualAc()] })]);
   assert.deepEqual(r.errors, []);
   assert.equal(r.rows[0].status, 'open (0/1 AC)');
 });
@@ -202,11 +203,10 @@ test('規則 3:commit 之後沒改過 → 乾淨通過', () => {
   assert.deepEqual(r.warnings, []);
 });
 
-test('紀錄一旦存在,規則 2、3 不分狀態一律適用', () => {
-  // 否則 review 期間可以先填一筆爛的,進 done 那天沒有人會再看它一眼。
+test('紀錄一旦存在,規則 2、3 一律適用', () => {
+  // 否則可以先填一筆爛的,而那張任務永遠不會有人再看它一眼。
   const r = audit([
     task({
-      status: 'review',
       owner: 'frontend',
       acceptance: [manualAc({ verified_record: record({ saw: '無資料時顯示空狀態' }) })],
     }),
@@ -313,22 +313,24 @@ test('現況的 owner / depends_on 全部合法', () => {
   }
 });
 
-test('過渡期:status 欄位可有可無,有的話必須與算出來的一致', () => {
-  // expand / migrate / contract 的第一拍。architect 的下一張會把這 11 個欄位
-  // 拿掉,所以這裡不能再要求它存在;但只要它還在,它就不該跟事實矛盾 ——
-  // 一個沒有人讀又說錯話的欄位,比沒有欄位糟。
-  //
-  // 這條測試在欄位被拿掉之後會自動變成空迴圈,然後由「不得存在」那一拍取代。
-  const 舊值對應 = { done: 'done', blocked: 'blocked', todo: 'open', in_progress: 'open', review: 'open' };
-  const tasks = loadTasksFrom();
-  const covered = collectCoverage();
+test('status 欄位不得存在 —— 沒有人讀的欄位不可以留著說謊', () => {
+  // ADR-007 的最後一拍。第 4 拍拿掉那 11 個欄位之後,誰再貼一個回去都不會有人
+  // 出聲,而它看起來像資訊。
+  const r = audit([task({ status: 'done' })]);
+  assert.equal(r.errors.length, 1);
+  assert.match(r.errors[0], /有 status 欄位/);
+  assert.match(r.errors[0], /pnpm task TASK-900/, '訊息要告訴人下一步去哪裡問');
 
-  for (const t of tasks) {
-    if (t.status === undefined) continue;
-    const 算出來 = deriveStatus(t, { covered, commitExists: commitExistsInRepo }).status;
-    assert.ok(t.status in 舊值對應, `${t.id} 的 status "${t.status}" 不是舊制的五個值之一`);
-    assert.equal(舊值對應[t.status], 算出來, `${t.id} 寫著 ${t.status},但算出來是 ${算出來}`);
-  }
+  // 連「說對話」的也不行:狀態是算出來的,重複一份就是等著漂移。
+  assert.equal(audit([task({ status: 'open' })]).errors.length, 1);
+
+  assert.deepEqual(audit([task()]).errors, []);
+});
+
+test('現況的 tasks.yaml 一個 status 都沒有', () => {
+  const tasks = loadTasksFrom();
+  assert.ok(tasks.length > 0);
+  for (const t of tasks) assert.equal(t.status, undefined, `${t.id} 還有 status`);
 });
 
 // ---------- ADR-007:退步比對 ----------
