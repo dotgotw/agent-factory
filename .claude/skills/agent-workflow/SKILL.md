@@ -1,6 +1,6 @@
 ---
 name: agent-workflow
-description: agent-factory 的角色工作流程 —— 確認自己的角色、被 scope 擋下來時怎麼開 CR、送 PR 前跑什麼、PR label 怎麼掛、CI 紅燈怎麼處理。當你在這個 repo 要開始一項任務、被 scope-guard 擋下、要送出 PR,或 PR 的 CI 紅燈時使用。
+description: agent-factory 的角色工作流程 —— 確認自己的角色、被 scope 擋下來時怎麼開 CR、跑探針驗證與回報數字時要小心什麼、送 PR 前跑什麼、PR label 怎麼掛、CI 紅燈怎麼處理。當你在這個 repo 要開始一項任務、被 scope-guard 擋下、要跑探針驗證某件事或把實測數字回報給別人、要送出 PR,或 PR 的 CI 紅燈時使用。
 ---
 
 # agent-factory 工作流程
