@@ -45,6 +45,8 @@ token 問題不是因為它小,是因為沒有人叫 agent 讀它。
 ```bash
 pnpm task TASK-042                      # 一個任務的完整內容
 pnpm tasks --owner backend --status todo   # 該角色待辦
+                                           # (ADR-007 之後 todo 併入 open,
+                                           #  這行保留原貌作為記錄)
 pnpm tasks --ac AC-017                  # 反查某條 AC 屬於誰
 ```
 
