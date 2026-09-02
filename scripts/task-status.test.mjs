@@ -13,7 +13,7 @@ import {
   acEvidence,
   commitExistsInRepo,
   deriveStatus,
-  doneSetAt,
+  snapshotAt,
   formatStatus,
   loadTasksFrom,
   collectCoverage,
@@ -96,13 +96,14 @@ test('proposed 的 CR 指名它就是 blocked,而且蓋過 done', () => {
 
 // ---------- 真實 repo ----------
 
-test('doneSetAt 問得到 git;取不到的 ref 回 null 而不是空集合', () => {
+test('snapshotAt 問得到 git;取不到的 ref 回 null 而不是空快照', () => {
   // 空集合與 null 差很多:空集合會讓退步比對「什麼都沒發現」而靜靜通過,
   // null 讓呼叫端知道這一輪沒有基準可比。
-  const here = doneSetAt('HEAD');
-  assert.ok(here instanceof Set);
-  assert.ok(here.size > 0);
-  assert.equal(doneSetAt('沒有這個ref'), null);
+  const here = snapshotAt('HEAD');
+  assert.ok(here.done instanceof Set);
+  assert.ok(here.done.size > 0);
+  assert.ok(here.acceptance.size > 0, '要帶著 AC 才分得出「掉了測試」與「改了 AC」');
+  assert.equal(snapshotAt('沒有這個ref'), null);
 });
 
 test('HEAD 上算出來的 done,與直接對工作區算的一致', () => {
@@ -112,5 +113,5 @@ test('HEAD 上算出來的 done,與直接對工作區算的一致', () => {
       .filter((t) => deriveStatus(t, { covered, commitExists: commitExistsInRepo }).status === 'done')
       .map((t) => t.id),
   );
-  assert.deepEqual([...doneSetAt('HEAD')].sort(), [...now].sort());
+  assert.deepEqual([...snapshotAt('HEAD').done].sort(), [...now].sort());
 });

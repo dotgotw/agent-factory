@@ -166,7 +166,12 @@ export function commitExistsInRepo(sha) {
 }
 
 /**
- * 某個 git ref 上算出來的 done 集合。取不到那個 ref 回傳 null。
+ * 某個 git ref 上的快照:算出來的 done 集合,以及每張任務的 AC 正規形式。
+ * 取不到那個 ref 回傳 null。
+ *
+ * 為什麼要帶 AC:退步比對要分得出兩件事 —— 「done 掉了測試」(AC 沒動,是退步)
+ * 與「AC 被改了所以不再 done」(contract 變更,是刻意的)。見 check-ac.mjs 的
+ * 退步比對那段。
  *
  * ⚠️  依賴完整的 git 歷史。CI 兩個 job 都是 fetch-depth: 0,所以成立。
  *     改成淺 clone 會讓這裡取不到 base ref —— 退步偵測從「抓得到」變成
@@ -174,7 +179,7 @@ export function commitExistsInRepo(sha) {
  *     紅線變成一次無聲的狀態變化。取不到時呼叫端要出聲,不要安靜跳過。
  *     (同 CR-011 裁決對 commit 欄位的那句提醒。)
  */
-export function doneSetAt(ref, { commitExists = commitExistsInRepo } = {}) {
+export function snapshotAt(ref, { commitExists = commitExistsInRepo } = {}) {
   const yaml = git(['show', `${ref}:contract/tasks.yaml`]);
   if (yaml === null) return null;
 
@@ -188,8 +193,15 @@ export function doneSetAt(ref, { commitExists = commitExistsInRepo } = {}) {
   }
 
   const done = new Set();
+  const acceptance = new Map();
   for (const task of parseYaml(yaml).tasks ?? []) {
+    acceptance.set(task.id, canonicalAcceptance(task));
     if (deriveStatus(task, { covered, commitExists }).status === 'done') done.add(task.id);
   }
-  return done;
+  return { done, acceptance };
+}
+
+/** 比對「AC 有沒有被動過」用的正規形式。 */
+export function canonicalAcceptance(task) {
+  return JSON.stringify(task?.acceptance ?? []);
 }

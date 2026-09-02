@@ -23,7 +23,7 @@ const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 // baseDone 預設給空集合:大多數測試不驗退步,不該每一條都收到「取不到 base ref」
 // 的提醒。要驗退步的測試自己傳。
 const audit = (tasks, ids = [], deps = {}) =>
-  auditTasks(tasks, new Set(ids), { baseDone: new Set(), ...deps });
+  auditTasks(tasks, new Set(ids), { base: { done: new Set(), acceptance: new Map() }, ...deps });
 
 /** 一筆合格的人工驗收紀錄。 */
 const record = (over = {}) => ({
@@ -305,38 +305,60 @@ test('現況的 status / owner / depends_on 全部合法 —— 上線不需要�
 
 // ---------- ADR-007:退步比對 ----------
 
-test('在 base 上是 done、在這裡不是 → 紅', () => {
-  // 這是 ADR-007 唯一的陷阱:推導把「done 掉了測試」從一條紅線變成一次
-  // 無聲的狀態變化。沒有這條比對,整個決策是淨損失。
-  const r = audit(
-    [task({ id: 'TASK-900', acceptance: [{ id: 'AC-900', text: 'x', verified_by: 'e2e' }] })],
-    [], // 沒有測試涵蓋 AC-900 → 現在不是 done
-    { baseDone: new Set(['TASK-900']) },
-  );
-  assert.equal(r.errors.length, 1);
-  assert.match(r.errors[0], /TASK-900 在 origin\/main 上是 done,在這裡不是/);
-  assert.match(r.errors[0], /掉了測試/);
+/** base 快照:哪些任務在 base 上是 done,以及它們當時的 AC。 */
+const base = (done, acceptance = []) => ({
+  done: new Set(done),
+  acceptance: new Map(acceptance),
 });
 
-test('任務被整個刪掉也算退步,而且訊息要說得出來', () => {
-  const r = audit([], [], { baseDone: new Set(['TASK-900']) });
+test('AC 一個字都沒動卻退出 done → 紅', () => {
+  // 這是 ADR-007 唯一的陷阱:推導把「done 掉了測試」從一條紅線變成一次
+  // 無聲的狀態變化。沒有這條比對,整個決策是淨損失。
+  const acs = [{ id: 'AC-900', text: 'x', verified_by: 'e2e' }];
+  const r = audit(
+    [task({ id: 'TASK-900', acceptance: acs })],
+    [], // 沒有測試涵蓋 AC-900 → 現在不是 done
+    { base: base(['TASK-900'], [['TASK-900', JSON.stringify(acs)]]) },
+  );
   assert.equal(r.errors.length, 1);
-  assert.match(r.errors[0], /被刪掉了/);
+  assert.match(r.errors[0], /AC 一個字都沒動/);
+});
+
+test('動了 AC 而退出 done → 提醒,不擋(否則會是個解不開的死結)', () => {
+  // architect 在一張 done 的任務上新增一條 AC:那張 PR 若判紅,測試在 e2e/
+  // (qa 的),而一張 PR 只能掛一個角色 —— 沒有任何一個人補得起來。
+  // contract 變更由 CODEOWNERS 的人類 review 把關,這裡出聲就夠。
+  const before = [{ id: 'AC-900', text: 'x', verified_by: 'e2e' }];
+  const after = [...before, { id: 'AC-901', text: '新的一條', verified_by: 'e2e' }];
+  const r = audit(
+    [task({ id: 'TASK-900', acceptance: after })],
+    ['AC-900'],
+    { base: base(['TASK-900'], [['TASK-900', JSON.stringify(before)]]) },
+  );
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.warnings.length, 1);
+  assert.match(r.warnings[0], /AC 也動了/);
+});
+
+test('任務被整個刪掉 → 提醒(那也是 contract 變更),訊息要說得出來', () => {
+  const r = audit([], [], { base: base(['TASK-900'], [['TASK-900', '[]']]) });
+  assert.deepEqual(r.errors, []);
+  assert.match(r.warnings[0], /整張任務被刪掉/);
 });
 
 test('沒有退步就不吭聲', () => {
-  const r = audit(
-    [task({ id: 'TASK-900', acceptance: [{ id: 'AC-900', text: 'x', verified_by: 'e2e' }] })],
-    ['AC-900'],
-    { baseDone: new Set(['TASK-900']) },
-  );
+  const acs = [{ id: 'AC-900', text: 'x', verified_by: 'e2e' }];
+  const r = audit([task({ id: 'TASK-900', acceptance: acs })], ['AC-900'], {
+    base: base(['TASK-900'], [['TASK-900', JSON.stringify(acs)]]),
+  });
   assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.warnings, []);
 });
 
 test('取不到 base ref → 出聲,但不擋', () => {
   // 安靜跳過等於這一輪沒有退步偵測,而沒有人會知道。判紅則會讓離線或
   // 淺 clone 的環境完全動不了 —— 那不是這支腳本能決定的事。
-  const r = auditTasks([task()], new Set(), { baseDone: null });
+  const r = auditTasks([task()], new Set(), { base: null });
   assert.deepEqual(r.errors, []);
   assert.equal(r.warnings.length, 1);
   assert.match(r.warnings[0], /沒有做退步比對/);

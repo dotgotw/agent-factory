@@ -87,7 +87,8 @@ import {
   collectCoverage,
   commitExistsInRepo,
   deriveStatus,
-  doneSetAt,
+  canonicalAcceptance,
+  snapshotAt,
   formatStatus,
   git,
 } from './task-status.mjs';
@@ -119,8 +120,8 @@ export function auditTasks(tasks, covered, deps = {}) {
     roles = null,
     // 哪些任務被 proposed 的 CR 擋著。Map(taskId -> [CR id])。
     blockedBy = new Map(),
-    // origin/main 上算出來的 done 集合;null = 取不到那個 ref(見退步比對)。
-    baseDone = null,
+    // base ref 的快照 { done, acceptance };null = 取不到那個 ref(見退步比對)。
+    base = null,
     baseRef = 'origin/main',
   } = deps;
 
@@ -230,15 +231,33 @@ export function auditTasks(tasks, covered, deps = {}) {
   // repo 的每一條規則都相反。所以要有基準:在 base ref 上是 done、在這裡不是,
   // 就是退步。要合法地退出 done,得動那張任務的 AC —— 那是 contract 變更,
   // 本來就該被看見。
-  if (baseDone) {
-    for (const id of baseDone) {
-      if (!doneNow.has(id)) {
-        const exists = tasks.some((t) => t.id === id);
-        errors.push(
-          `${id} 在 ${baseRef} 上是 done,在這裡不是` +
-            (exists ? ' —— 是不是掉了測試,或 verified_record 壞了?' : '(這張任務被刪掉了)'),
+  if (base) {
+    for (const id of base.done) {
+      if (doneNow.has(id)) continue;
+
+      const now = tasks.find((t) => t.id === id);
+      const acChanged = !now || base.acceptance.get(id) !== canonicalAcceptance(now);
+
+      if (acChanged) {
+        // 動了 AC 而退出 done —— 那是 contract 變更,只有 architect 改得到,
+        // 而且 CODEOWNERS 要求人類看過。ADR-007 說這是**合法**的退出方式,
+        // 所以這裡出聲但不擋。
+        //
+        // 判紅的話會產生一個沒有人解得開的死結:architect 在一張 done 的任務上
+        // 新增一條 AC,那張 PR 就是紅的,而測試在 e2e/(qa 的),一張 PR 只能掛
+        // 一個角色 —— 沒有任何一個人補得起來。
+        warnings.push(
+          `${id} 在 ${baseRef} 上是 done,在這裡不是 —— 但它的 AC 也動了` +
+            (now ? '' : '(整張任務被刪掉)') +
+            `,當成刻意的 contract 變更。若不是刻意的,那是一次無聲的退步。`,
         );
+        continue;
       }
+
+      errors.push(
+        `${id} 在 ${baseRef} 上是 done,在這裡不是,而它的 AC 一個字都沒動 ` +
+          `—— 是不是掉了測試,或 verified_record 壞了?`,
+      );
     }
   } else {
     // 取不到基準時要出聲。安靜跳過等於這一輪沒有退步偵測,而沒有人會知道。
@@ -314,7 +333,7 @@ function main() {
   const { rows, errors, warnings } = auditTasks(tasks, covered, {
     ...repoDeps(),
     blockedBy: blockedByCrs(),
-    baseDone: doneSetAt(baseRef),
+    base: snapshotAt(baseRef),
     baseRef,
   });
 
