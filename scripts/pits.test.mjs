@@ -26,9 +26,28 @@ test('解析:不是坑註解的行回 null', () => {
   assert.equal(parsePit('// TODO: 這裡還沒做'), null);
 });
 
-test('解析:沒指名角色也解析得出來 —— 否則形狀檢查驗不到它', () => {
-  const p = parsePit('// 坑(下一個踩的人:):忘了指名');
-  assert.equal(p.role, '');
+test('解析:命中前綴就算「想寫」,寫壞了也不能靜默跳過', () => {
+  // 識別與驗證分開,否則寫壞的形狀會因為「解析不出來」而被當成一般註解跳過 ——
+  // 那是最糟的失敗:寫的人以為留下了坑註解,被指名的人卻永遠看不到。
+  assert.equal(parsePit('// 坑(下一個踩的人:):忘了指名').role, '', '角色留空:解析得出,靠角色檢查擋');
+  assert.equal(parsePit('// 坑(下一個踩的人):忘了冒號').malformed, true);
+  assert.equal(parsePit('// 坑(下一個踩的人:qa 括號沒關').malformed, true);
+});
+
+test('解析:完全記錯格式的兩種抓不到 —— 這是記下來的欠帳', () => {
+  // 放寬識別子到「坑(」就會誤判正常的中文:e2e/server.ts:2 寫著
+  // 「它們踩的是同一個坑(CR-004)」。理由寫在 pits.mjs 的檔頭。
+  assert.equal(parsePit('// 坑(qa):只寫了角色'), null);
+  assert.equal(parsePit('// 坑:忘了整個括號'), null);
+  assert.equal(parsePit('// 它們踩的是同一個坑(CR-004):見那份 CR'), null, '正常中文不可以被誤判');
+});
+
+test('形狀檢查:寫壞的形狀也要紅,不只是角色打錯', () => {
+  const bad = { file: 'scripts/x.mjs', line: 9, malformed: true, raw: '// 坑(下一個踩的人):忘了冒號' };
+  const errs = shapeErrors([bad], ROLES);
+  assert.equal(errs.length, 1);
+  assert.match(errs[0], /形狀不完整/);
+  assert.match(errs[0], /忘了冒號/, '訊息要把那一行原文帶出來,否則找不到是哪裡');
 });
 
 test('形狀檢查:角色必須存在於 scope.json', () => {
@@ -56,14 +75,17 @@ test('掃描範圍:文件、衍生輸出、本機制自己的檔案都不算', (
   assert.equal(isSkipped('scripts/check-ac.mjs'), false);
 });
 
-test('pitsFor 只給那個角色的', () => {
+test('pitsFor 只給那個角色的,而且壞掉的形狀不算任何人的', () => {
   const pits = [
     { file: 'a', line: 1, role: 'qa', note: '1' },
     { file: 'b', line: 2, role: 'infra', note: '2' },
     { file: 'c', line: 3, role: 'qa', note: '3' },
+    { file: 'd', line: 4, role: null, malformed: true, raw: 'x' },
   ];
   assert.equal(pitsFor('qa', pits).length, 2);
   assert.equal(pitsFor('backend', pits).length, 0);
+  // 壞掉的由 check:pits 判紅,不該偽裝成某個人的坑出現在他的開場
+  assert.equal(pitsFor(null, pits).length, 0);
 });
 
 test('現況掃描是乾淨的 —— 文件裡的範例沒有被當成真的坑', () => {
