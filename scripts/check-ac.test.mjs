@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { auditTasks, collectAcIds, normalize, repoDeps } from './check-ac.mjs';
 import {
+  acceptanceStructure,
   collectCoverage,
   commitExistsInRepo,
   deriveStatus,
@@ -332,23 +333,23 @@ test('過渡期:status 欄位可有可無,有的話必須與算出來的一致',
 
 // ---------- ADR-007:退步比對 ----------
 
-/** base 快照:哪些任務在 base 上是 done,以及它們當時的 AC。 */
+/** base 快照:哪些任務在 base 上是 done,以及它們當時的 AC 結構。 */
 const base = (done, acceptance = []) => ({
   done: new Set(done),
-  acceptance: new Map(acceptance),
+  acceptance: new Map(acceptance.map(([id, acs]) => [id, acceptanceStructure({ acceptance: acs })])),
 });
 
-test('AC 一個字都沒動卻退出 done → 紅', () => {
+test('AC 結構沒變卻退出 done → 紅', () => {
   // 這是 ADR-007 唯一的陷阱:推導把「done 掉了測試」從一條紅線變成一次
   // 無聲的狀態變化。沒有這條比對,整個決策是淨損失。
   const acs = [{ id: 'AC-900', text: 'x', verified_by: 'e2e' }];
   const r = audit(
     [task({ id: 'TASK-900', acceptance: acs })],
     [], // 沒有測試涵蓋 AC-900 → 現在不是 done
-    { base: base(['TASK-900'], [['TASK-900', JSON.stringify(acs)]]) },
+    { base: base(['TASK-900'], [['TASK-900', acs]]) },
   );
   assert.equal(r.errors.length, 1);
-  assert.match(r.errors[0], /AC 一個字都沒動/);
+  assert.match(r.errors[0], /AC 結構沒變/);
 });
 
 test('動了 AC 而退出 done → 提醒,不擋(否則會是個解不開的死結)', () => {
@@ -360,15 +361,15 @@ test('動了 AC 而退出 done → 提醒,不擋(否則會是個解不開的死�
   const r = audit(
     [task({ id: 'TASK-900', acceptance: after })],
     ['AC-900'],
-    { base: base(['TASK-900'], [['TASK-900', JSON.stringify(before)]]) },
+    { base: base(['TASK-900'], [['TASK-900', before]]) },
   );
   assert.deepEqual(r.errors, []);
   assert.equal(r.warnings.length, 1);
-  assert.match(r.warnings[0], /AC 也動了/);
+  assert.match(r.warnings[0], /AC 結構也動了/);
 });
 
 test('任務被整個刪掉 → 提醒(那也是 contract 變更),訊息要說得出來', () => {
-  const r = audit([], [], { base: base(['TASK-900'], [['TASK-900', '[]']]) });
+  const r = audit([], [], { base: base(['TASK-900'], [['TASK-900', []]]) });
   assert.deepEqual(r.errors, []);
   assert.match(r.warnings[0], /整張任務被刪掉/);
 });
@@ -376,7 +377,7 @@ test('任務被整個刪掉 → 提醒(那也是 contract 變更),訊息要說�
 test('沒有退步就不吭聲', () => {
   const acs = [{ id: 'AC-900', text: 'x', verified_by: 'e2e' }];
   const r = audit([task({ id: 'TASK-900', acceptance: acs })], ['AC-900'], {
-    base: base(['TASK-900'], [['TASK-900', JSON.stringify(acs)]]),
+    base: base(['TASK-900'], [['TASK-900', acs]]),
   });
   assert.deepEqual(r.errors, []);
   assert.deepEqual(r.warnings, []);
@@ -397,4 +398,53 @@ test('blocked 由 proposed 的 CR 算出來,顯示在那張表上', () => {
     blockedBy: new Map([['TASK-900', ['CR-014']]]),
   });
   assert.equal(r.rows[0].status, 'blocked(CR-014)');
+});
+
+// ---------- 分流的判準是「結構」,不是「有沒有變」 ----------
+
+test('只改 text 這類散文,不能讓真正的退步降級成提醒', () => {
+  // 這是收緊的核心:改一個字元 + 拿掉測試,原本會從 ❌ 掉成 ⚠️。
+  const before = [{ id: 'AC-900', text: '原本的敘述', verified_by: 'e2e' }];
+  const after = [{ id: 'AC-900', text: '原本的敘述。', verified_by: 'e2e' }];
+  const r = audit([task({ id: 'TASK-900', acceptance: after })], [], {
+    base: base(['TASK-900'], [['TASK-900', before]]),
+  });
+  assert.equal(r.errors.length, 1);
+  assert.match(r.errors[0], /AC 結構沒變/);
+});
+
+test('verified_by 改了算結構變了 → ⚠️(否則是死結一的變種)', () => {
+  // manual → e2e:id 集合一個字沒變,但證據規則變了,而那條 e2e 測試還不存在。
+  // 判紅的話,改 verified_by 的是 architect、寫測試的是 qa —— 一張 PR 補不起來。
+  const before = [{ id: 'AC-900', text: 'x', verified_by: 'manual' }];
+  const after = [{ id: 'AC-900', text: 'x', verified_by: 'e2e' }];
+  const r = audit([task({ id: 'TASK-900', acceptance: after })], [], {
+    base: base(['TASK-900'], [['TASK-900', before]]),
+  });
+  assert.deepEqual(r.errors, []);
+  assert.match(r.warnings[0], /verified_by/);
+});
+
+test('verified_record 不算結構 —— 刪掉一筆紀錄就是證據消失,該紅', () => {
+  // 補得回來的人跟刪掉的人是同一個角色(architect),不構成死結。
+  const rec = { at: '2026-09-02', who: 'someone', commit: 'abc1234', saw: '看到某個東西' };
+  const withRec = [{ ...manualAc(), verified_record: rec }];
+  const withoutRec = [manualAc()];
+  const r = audit([task({ id: 'TASK-900', owner: 'frontend', acceptance: withoutRec })], [], {
+    base: base(['TASK-900'], [['TASK-900', withRec]]),
+  });
+  assert.equal(r.errors.length, 1);
+  assert.match(r.errors[0], /AC 結構沒變/);
+});
+
+test('AC 換順序不算結構變了 —— 集合一樣就是一樣', () => {
+  const before = [
+    { id: 'AC-900', text: 'a', verified_by: 'e2e' },
+    { id: 'AC-901', text: 'b', verified_by: 'e2e' },
+  ];
+  const after = [before[1], before[0]];
+  const r = audit([task({ id: 'TASK-900', acceptance: after })], ['AC-900'], {
+    base: base(['TASK-900'], [['TASK-900', before]]),
+  });
+  assert.equal(r.errors.length, 1, '少了 AC-901 的測試 → 真的退步,不該因為換順序就降級');
 });

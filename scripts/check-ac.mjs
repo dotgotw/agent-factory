@@ -87,7 +87,7 @@ import {
   collectCoverage,
   commitExistsInRepo,
   deriveStatus,
-  canonicalAcceptance,
+  acceptanceStructure,
   snapshotAt,
   formatStatus,
   git,
@@ -236,10 +236,10 @@ export function auditTasks(tasks, covered, deps = {}) {
       if (doneNow.has(id)) continue;
 
       const now = tasks.find((t) => t.id === id);
-      const acChanged = !now || base.acceptance.get(id) !== canonicalAcceptance(now);
+      const 結構變了 = !now || base.acceptance.get(id) !== acceptanceStructure(now);
 
-      if (acChanged) {
-        // 動了 AC 而退出 done —— 那是 contract 變更,只有 architect 改得到,
+      if (結構變了) {
+        // 動了 AC 的**結構**而退出 done —— 那是 contract 變更,只有 architect 改得到,
         // 而且 CODEOWNERS 要求人類看過。ADR-007 說這是**合法**的退出方式,
         // 所以這裡出聲但不擋。
         //
@@ -247,16 +247,16 @@ export function auditTasks(tasks, covered, deps = {}) {
         // 新增一條 AC,那張 PR 就是紅的,而測試在 e2e/(qa 的),一張 PR 只能掛
         // 一個角色 —— 沒有任何一個人補得起來。
         warnings.push(
-          `${id} 在 ${baseRef} 上是 done,在這裡不是 —— 但它的 AC 也動了` +
-            (now ? '' : '(整張任務被刪掉)') +
+          `${id} 在 ${baseRef} 上是 done,在這裡不是 —— 但它的 AC 結構也動了` +
+            (now ? '(id 集合或 verified_by)' : '(整張任務被刪掉)') +
             `,當成刻意的 contract 變更。若不是刻意的,那是一次無聲的退步。`,
         );
         continue;
       }
 
       errors.push(
-        `${id} 在 ${baseRef} 上是 done,在這裡不是,而它的 AC 一個字都沒動 ` +
-          `—— 是不是掉了測試,或 verified_record 壞了?`,
+        `${id} 在 ${baseRef} 上是 done,在這裡不是,而它的 AC 結構沒變` +
+          `(id 集合與 verified_by 都一樣)—— 是不是掉了測試,或 verified_record 壞了?`,
       );
     }
   } else {

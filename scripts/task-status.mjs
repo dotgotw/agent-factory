@@ -180,9 +180,9 @@ export function commitExistsInRepo(sha) {
  * 某個 git ref 上的快照:算出來的 done 集合,以及每張任務的 AC 正規形式。
  * 取不到那個 ref 回傳 null。
  *
- * 為什麼要帶 AC:退步比對要分得出兩件事 —— 「done 掉了測試」(AC 沒動,是退步)
- * 與「AC 被改了所以不再 done」(contract 變更,是刻意的)。見 check-ac.mjs 的
- * 退步比對那段。
+ * 為什麼要帶 AC 的結構:退步比對要分得出兩件事 —— 「done 掉了測試」(結構沒動,
+ * 是退步)與「AC 的結構被改了所以不再 done」(contract 變更,是刻意的)。
+ * 見 check-ac.mjs 的退步比對那段與 acceptanceStructure 的註解。
  *
  * ⚠️  依賴完整的 git 歷史。CI 兩個 job 都是 fetch-depth: 0,所以成立。
  *     改成淺 clone 會讓這裡取不到 base ref —— 退步偵測從「抓得到」變成
@@ -206,13 +206,29 @@ export function snapshotAt(ref, { commitExists = commitExistsInRepo } = {}) {
   const done = new Set();
   const acceptance = new Map();
   for (const task of parseYaml(yaml).tasks ?? []) {
-    acceptance.set(task.id, canonicalAcceptance(task));
+    acceptance.set(task.id, acceptanceStructure(task));
     if (deriveStatus(task, { covered, commitExists }).status === 'done') done.add(task.id);
   }
   return { done, acceptance };
 }
 
-/** 比對「AC 有沒有被動過」用的正規形式。 */
-export function canonicalAcceptance(task) {
-  return JSON.stringify(task?.acceptance ?? []);
+/**
+ * 比對「AC 的**結構**有沒有被動過」用的正規形式。
+ *
+ * 只取 id 與 verified_by,而且排序 —— 這兩樣決定了「要拿什麼才算證據」。
+ * 散文(text、verified_note)不在裡面:改一個字元不該讓一次真正的退步降級成提醒。
+ *
+ * verified_by 一定要算進來,否則會長出死結一的變種:把一條 AC 從 manual 改成
+ * e2e,id 集合一個字沒變,但那條 e2e 測試還不存在 —— 判紅的話,改 verified_by
+ * 的是 architect、寫測試的是 qa,又是一張 PR 補不起來的組合。
+ *
+ * verified_record **不算結構**:刪掉一筆人工驗收紀錄就是證據消失,本來就該紅,
+ * 而且補得回來的人跟刪掉的人是同一個角色,不構成死結。
+ */
+export function acceptanceStructure(task) {
+  return JSON.stringify(
+    (task?.acceptance ?? [])
+      .map((ac) => [ac.id, ac.verified_by ?? null])
+      .sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+  );
 }
