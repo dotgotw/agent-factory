@@ -213,6 +213,34 @@ git fetch origin && git log --oneline origin/main -3
 看不到你的 commit 就是沒進去。補救方式是從 `origin/main` 開一個新分支、
 `git cherry-pick` 那個 commit,再開一張以 main 為目標的 PR。
 
+**還有一個會咬人的地方:第一張合併之後,第二張多半會變成「有衝突」——
+那不是有人做錯事。**
+
+這個 repo 用 squash merge。第一張進 main 之後,main 上是一個**新的 commit**,
+而疊在上面的那張分支還揹著它自己那份原始 commit —— 兩邊內容一模一樣、commit
+不同,git 只能判衝突。
+
+咬人的是時機:紅燈出現在「按下第一張合併」之後,而不是在寫第二張的時候,
+所以看起來像剛剛那個動作做錯了什麼。
+
+修法是把第二張自己的 commit 重新接到 main 上,把重複的那個丟掉:
+
+```bash
+git fetch origin && git rebase --onto origin/main 第一棒的分支名
+```
+
+然後 `git push --force-with-lease`。用 `--force-with-lease` 而不是 `--force`:
+別人動過這條分支的話它會拒絕,而不是安靜覆蓋掉。
+
+送出前確認 diff 只剩你自己的檔案:
+
+```bash
+git diff --stat origin/main...HEAD
+```
+
+真的發生過:#93 合併之後 #94 立刻 CONFLICTING,rebase 掉重複的 commit 之後,
+diff 從六個檔案回到三個,CI 重跑全綠。
+
 ## 一個刻意留下的狀態
 
 `contract/tasks.yaml` 的 TASK-004 是 `blocked`,對應
