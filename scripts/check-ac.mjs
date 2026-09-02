@@ -21,6 +21,16 @@
  *
  * 刻意沒有 verified_by: none —— 零成本的逃生門會把單向漂移制度化。
  *
+ * ## decisions 指標(ADR-005)
+ *
+ * 任務的 decisions: 列的是「這張任務的理由住在哪」。指到不存在的檔案 → 紅。
+ * ADR-005 自己把這個記成一個洞:路徑相對 repo 根目錄,指錯不會有人出聲。
+ * 判紅的理由與 CR-011 的 commit 欄位同一條:打錯字很便宜,而一個指不到東西的
+ * 指標比沒有指標更糟 —— 它讓人以為理由有家。
+ *
+ * (這支的名字只說 AC,但它其實是 tasks.yaml 的整合性檢查。沒改名是因為
+ *  CI 的 step 名與大家的肌肉記憶都綁著它,改名值得單獨一張 PR。)
+ *
  * ## verified_record 的三條規則(CR-011 裁決)
  *
  *   1. status: done 且 verified_by: manual 的 AC,必須有 verified_record,
@@ -47,7 +57,7 @@
  *     解析不出 commit 那半會紅,過期那半不會。
  */
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { load as parseYaml } from 'js-yaml';
@@ -93,6 +103,7 @@ export function auditTasks(tasks, covered, deps = {}) {
     commitExists = () => true,
     changedSince = () => [],
     ownerPaths = () => [],
+    decisionExists = () => true,
   } = deps;
 
   const errors = [];
@@ -103,6 +114,21 @@ export function auditTasks(tasks, covered, deps = {}) {
   for (const task of tasks) {
     const acs = task.acceptance ?? [];
     const cells = [];
+
+    // decisions: 指到的檔案必須存在。
+    //
+    // ADR-005 把這個欄位定義成「這張任務的理由住在哪」,並且自己記了這是個洞:
+    // 路徑相對 repo 根目錄,指錯不會有人出聲。形狀跟 CR-011 的 commit 欄位一樣
+    // —— 打錯字很便宜,所以判紅;而一個指不到東西的指標,比沒有指標更糟:
+    // 它讓人以為理由有家。
+    for (const path of task.decisions ?? []) {
+      if (!decisionExists(path)) {
+        errors.push(
+          `${task.id}: decisions 指到 "${path}",但那個檔案不存在` +
+            `(路徑相對 repo 根目錄)`,
+        );
+      }
+    }
 
     for (const ac of acs) {
       declared.add(ac.id);
@@ -252,6 +278,7 @@ function git(args) {
 export function repoDeps(scope = loadScope()) {
   return {
     ownerPaths: (owner) => scope.roles[owner]?.allow ?? [],
+    decisionExists: (path) => existsSync(join(rootDir, path)),
     commitExists: (sha) => git(['rev-parse', '--verify', '--quiet', `${sha}^{commit}`]) !== null,
     changedSince: (sha, paths) =>
       (git(['log', '--format=%h', `${sha}..HEAD`, '--', ...paths]) ?? '')

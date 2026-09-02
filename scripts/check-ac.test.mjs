@@ -12,6 +12,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { load as parseYaml } from 'js-yaml';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { auditTasks, collectAcIds, normalize, repoDeps } from './check-ac.mjs';
@@ -217,4 +219,38 @@ test('repoDeps 真的問得到 git —— 注入假 deps 測不到指令有沒�
   assert.ok(deps.changedSince(first, ['scripts/']).length > 0);
   assert.deepEqual(deps.ownerPaths('frontend'), ['frontend/src/']);
   assert.deepEqual(deps.ownerPaths('沒這個角色'), []);
+});
+
+// ---------- ADR-005:decisions 指標 ----------
+
+test('decisions 指到不存在的檔案 → 紅', () => {
+  const r = audit(
+    [task({ decisions: ['contract/decisions/ADR-999-不存在.md'] })],
+    [],
+    { decisionExists: () => false },
+  );
+  assert.equal(r.errors.length, 1);
+  assert.match(r.errors[0], /decisions 指到/);
+});
+
+test('decisions 指到存在的檔案 → 過;沒有 decisions 也不強制', () => {
+  assert.deepEqual(audit([task({ decisions: ['README.md'] })], [], { decisionExists: () => true }).errors, []);
+  assert.deepEqual(audit([task()]).errors, []);
+});
+
+test('repoDeps.decisionExists 問的是真的檔案系統', () => {
+  const deps = repoDeps();
+  assert.equal(deps.decisionExists('README.md'), true);
+  assert.equal(deps.decisionExists('contract/tasks.yaml'), true);
+  assert.equal(deps.decisionExists('這個檔案不存在.md'), false);
+});
+
+test('現況的 decisions 全部指得到 —— 這條檢查上線不需要遷移', () => {
+  const tasks = parseYaml(readFileSync(join(rootDir, 'contract', 'tasks.yaml'), 'utf8')).tasks;
+  const deps = repoDeps();
+  for (const t of tasks) {
+    for (const d of t.decisions ?? []) {
+      assert.equal(deps.decisionExists(d), true, `${t.id} 的 ${d} 指不到`);
+    }
+  }
 });
