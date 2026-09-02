@@ -1,35 +1,21 @@
 # 任務狀態機。用 YAML 而非 markdown,因為狀態與依賴需要能被腳本查詢。
-# status: todo | in_progress | blocked | review | done
 #
-# 每一條 acceptance 必須宣告 verified_by,見 change-requests/CR-006.md:
-#   e2e    — 由 e2e/*.spec.ts 自動驗收。任務進入 done 時,scripts/check-ac.mjs
-#            會要求 e2e 裡找得到這個 AC 編號,找不到就紅。
-#   manual — 黑箱 e2e 架構上打不到(例如純畫面的驗收)。必須附 verified_note
-#            寫明為什麼,讓「這條沒有自動化測試」是讀得到的事實而不是默契。
+# ⚠️  這支檔案是給腳本讀的,不是給 agent 整支讀的。查詢用:
 #
-# 刻意沒有 "none" 這個值。少寫一條測試不會讓 CI 變紅,它讓 CI 變得更綠 ——
-# 這種漂移是單向的,給一個零成本的逃生門等於把它制度化。
-
-# verified_by: manual 的 AC,在任務進入 done 時必須附一筆 verified_record
-# (CR-011 裁決)。verified_note 記的是「為什麼自動化測不到」,verified_record
-# 記的是「那次人工驗收發生過」—— 兩件事,不共用欄位。
+#     pnpm task TASK-042                    # 一個任務
+#     pnpm tasks --owner backend --status todo
 #
-#   verified_record:
-#     at: 2026-09-01          # 驗收日期
-#     who: zozo0526           # 誰驗的
-#     commit: 48dc54a         # 驗的是哪個版本 —— 沒有這個欄位,紀錄會靜默過期
-#     saw: 建一筆後列表顯示名稱、active、2026/9/1
+# 見 decisions/ADR-005-tasks-are-queried-not-read.md。同一份決策也規定
+# **本檔只放資料** —— 決策理由住在 CR 或 ADR,用每個任務的 decisions: 欄位指過去。
 #
-# saw 寫的是**看到什麼**,不是複述 text。複述等於沒驗,check:ac 會擋。
-#
-# 這筆紀錄擋的是「忘了驗就標 done」,擋不住假簽 —— 那層是 CODEOWNERS 要求的
-# 人類 review。也別把它做得更重(截圖、簽章):成本落在每一次驗收,擋到的
-# 東西不會比「有沒有這筆紀錄」多。
-#
-# commit 讓過期變成可偵測的:owner 的路徑在那個 commit 之後改過,這筆紀錄就
-# 不再對應現在的程式碼。那是提醒不是紅燈 —— 人工複驗要花人的時間,每次改
-# frontend 都紅會製造噪音,而噪音的下場是被繞掉。代價要說清楚:**manual 的
-# done 是快照,e2e 的 done 是活的**,兩者強度不同。
+# 欄位語意:
+#   status        todo | in_progress | blocked | review | done
+#   verified_by   e2e | manual —— 規格由 CR-006 裁決,執行者是 scripts/check-ac.mjs
+#                 (刻意沒有 none,理由見該腳本的檔頭)
+#   verified_note manual 專用:為什麼自動化測不到
+#   verified_record  manual 專用,進 done 時必填:at / who / commit / saw
+#                 規格與四個欄位的意義見 CR-011 的裁決
+#   decisions     這張任務的理由住在哪(相對 repo 根目錄的路徑)
 
 tasks:
   - id: TASK-001
@@ -66,9 +52,9 @@ tasks:
   - id: TASK-003
     title: 專案列表畫面
     owner: frontend
-    # AC-005/AC-006 於 2026-09-01 人工驗收,紀錄見下面的 verified_record
-    # (制度的第一筆)。#54 讓 check:ac 真的驗得到那筆紀錄之後才翻 done ——
-    # 這個 done 是第一個「被機制看過」的 manual done,見 CR-011 裁決。
+    decisions:
+      - "change-requests/CR-006.md"
+      - "change-requests/CR-011.md"
     status: done
     depends_on: []   # 對 contract 開發,不需等 backend
     contract_refs:
@@ -96,10 +82,8 @@ tasks:
   - id: TASK-004
     title: 專案封存功能
     owner: backend
-    # CR-001 已 accepted,PATCH /projects/{projectId} 就緒,解除阻擋。
-    # 實作 #56,AC-007 的 e2e 測試 #61(e2e/archive.spec.ts)。
-    # check:ac 現在看得到 AC-007 的覆蓋,狀態才進 done —— 不是「有人覺得
-    # 做完了」,是測試每次 CI 都重跑一遍。
+    decisions:
+      - "change-requests/CR-001.md"
     status: done
     depends_on: [TASK-002]
     contract_refs:
@@ -112,18 +96,8 @@ tasks:
   - id: TASK-005
     title: 專案負責人通知
     owner: backend
-    # 這張本來驗不了,兩個洞:ownerEmail 沒有寫入路徑(CR-002 只加了回應
-    # 欄位),而「寄出通知」在黑箱裡看不到。ADR-004 兩個都補了 ——
-    # CreateProjectRequest 可帶 ownerEmail,Project 多一個唯讀的
-    # lastNotifiedAt 當作通知這件事的可觀察面。
-    #
-    # AC 的措辭因此改成「可觀察的結果」而不是「內部發生了什麼」:e2e 驗不了
-    # 「信寄出去了」,驗得了「lastNotifiedAt 更新了」。改的是驗收方式,
-    # 不是驗收意圖。
-    #
-    # 實作 #64,AC-008/009/014 的 e2e 測試 #67。check:ac 看得到三條的覆蓋,
-    # 狀態進 done —— 副作用能進到這一格,是因為 ADR-004 先給了它一個
-    # 可觀察面;沒有 lastNotifiedAt 的話這張永遠卡在 review。
+    decisions:
+      - "contract/decisions/ADR-004-observable-side-effects.md"
     status: done
     depends_on: [TASK-002]
     contract_refs:
@@ -161,20 +135,8 @@ tasks:
   - id: TASK-007
     title: 列表篩選參數的驗證 —— status 不在 enum 內要回 400
     owner: backend
-    # 既有缺口,backend 做 TASK-004 時發現的。GET /projects?status=bogus 目前
-    # 回 200 + 空列表:client 打錯字看起來像「沒有資料」,而不是「你問錯了」。
-    #
-    # 同一個 API 裡兩套標準:limit 超範圍回 400(AC-012),PATCH 的 status
-    # 不在 enum 內也回 400(#56 實測),只有 GET 的 status filter 靜默吞掉。
-    # 這跟 CR-001 裁決拒絕「{} 是一次成功但什麼都沒做的 PATCH」是同一個理由:
-    # 靜默的錯誤來源比明確的失敗貴。
-    #
-    # openapi.yaml 的 400 已補上(#58),實作 #59,由 architect 實測:
-    #   ?status=bogus                   400
-    #   ?status=ACTIVE                  400(enum 大小寫敏感)
-    #   ?status=active&status=archived  400(重複帶參數會拿到陣列)
-    #   ?status=                        200,視同未帶 —— 契約定死的那一條
-    # AC-013 的 e2e 測試 #63 已合併,check:ac 看得到覆蓋,狀態進 done。
+    decisions:
+      - "contract/decisions/ADR-006-no-silent-acceptance.md"
     status: done
     depends_on: [TASK-006]
     contract_refs:
@@ -187,21 +149,9 @@ tasks:
   - id: TASK-008
     title: request body 的未定義欄位一律拒絕
     owner: backend
-    # backend 做 TASK-005 時問出來的:PATCH 帶多餘欄位目前靜默忽略。
-    # 實測 PATCH {"status":"archived","ownerEmail":"new@example.com"} → 200,
-    # 而 ownerEmail 沒有變;POST {"name":"x","ownerEmial":"..."} 打錯欄位名
-    # → 201,ownerEmail 是空的。兩個都是「成功了,但你要的事沒發生」。
-    #
-    # 這不是新原則,是第三個實例 —— CR-001 拒絕「{} 的空 PATCH」、TASK-007
-    # 拒絕「?status=bogus 回空列表」,理由都是靜默的錯誤來源比明確的失敗貴。
-    # 所以沒有開 CR 也沒有寫 ADR:套用既有決策不需要重新決策一次。
-    #
-    # 最具體的受害者是 ADR-004 自己造出來的:它明說改既有專案的 ownerEmail
-    # 沒有路徑,於是 client 遲早會送 PATCH {"ownerEmail": ...}。
-    #
-    # contract 已改(additionalProperties: false),這張是把它實作出來。
-    # 實作 #71,AC-015 的 e2e 測試 #74。實測 POST 與 PATCH 兩處都擋,
-    # 400 + Error schema,訊息還點名了是哪個欄位。狀態進 done。
+    decisions:
+      - "contract/decisions/ADR-006-no-silent-acceptance.md"
+      - "contract/decisions/ADR-004-observable-side-effects.md"
     status: done
     depends_on: [TASK-005]
     contract_refs:
@@ -215,22 +165,9 @@ tasks:
   - id: TASK-009
     title: 壞掉的 JSON 也要回 Error schema,不要回 express 的 HTML
     owner: backend
-    # 裁決 CR-012 時實測到的,不是 qa 報的:body 送一段語法錯誤的 JSON,
-    # express 的 body-parser 會丟出來,預設錯誤處理器回一個 HTML 頁面。
-    #
-    #   POST /projects   body: {"name":        → 400  content-type: text/html
-    #   PATCH /projects/xyz  body: {oops       → 400  content-type: text/html
-    #
-    # 狀態碼是對的,但 contract 說這個 400 的 content 是 application/json 的
-    # Error —— 也就是說這條路徑上 API 違反自己的契約。CR-012 讓它更刺眼:
-    # 一個回 HTML 的回應根本給不出 code。
-    #
-    # 修法是一個 express 錯誤處理器,把 body-parser 的解析錯誤轉成
-    # { code: 'VALIDATION_ERROR', message: ... }。不需要新的 code 值。
-    # contract 不必改 —— 契約本來就是這樣寫的,是實作沒有做到。
-    #
-    # 實作 #72,AC-016 的 e2e 測試 #76。實測壞 JSON 回 400 +
-    # application/json 的 Error,狀態進 done。
+    decisions:
+      - "contract/decisions/ADR-006-no-silent-acceptance.md"
+      - "change-requests/CR-012.md"
     status: done
     depends_on: [TASK-008]
     contract_refs:
@@ -243,22 +180,9 @@ tasks:
   - id: TASK-010
     title: body 超過大小上限時回 413 + Error schema
     owner: backend
-    # backend 在 TASK-009 之後問的兩個但書,我只採了一個。
-    #
-    # 採:413。實測 POST 一個 200KB 的 body → 413 但 content-type 是 text/html
-    # (express.json() 的預設上限,body-parser 丟例外走預設處理器)。
-    # 這跟 TASK-009 是同一個缺陷:**打的是一個已宣告的操作,拿到的卻是一個
-    # 未宣告的回應形狀**。契約已補上 413 與 PAYLOAD_TOO_LARGE。
-    #
-    # 不採:未定義路由的 404 仍回 HTML。理由不是成本,是範圍 —— 契約描述它
-    # 宣告的操作,不描述未宣告的路徑;一份契約沒辦法枚舉、也沒辦法驗證它自己
-    # 路徑集合的補集。要讓「所有錯誤都是 Error」變成全 API 的保證,那是另一個
-    # 決定,不能當成 bug 修進來。這條寫進 openapi.yaml 的 info.description。
-    #
-    # 為什麼需要新的 code 值:把「你的 body 有 200KB」壓成 VALIDATION_ERROR
-    # 等於叫 client 去改欄位,而它該做的是少送一點。CR-012 裁決說加值必須是
-    # 一次看得見的動作 —— 這就是那次動作。
-    # 實作 #80,AC-017 的 e2e 測試 #84。
+    decisions:
+      - "contract/decisions/ADR-006-no-silent-acceptance.md"
+      - "change-requests/CR-012.md"
     status: done
     depends_on: [TASK-009]
     contract_refs:
@@ -272,47 +196,8 @@ tasks:
   - id: TASK-011
     title: 已宣告的操作只在宣告的路徑上提供 —— 大小寫與結尾斜線都算
     owner: backend
-    # 裁決 TASK-010 時順手量到的,實測六個變體全部回 200 + 正確的列表:
-    #
-    #   /projects  /Projects  /PROJECTS  /pRoJeCtS  /projects/  /projects//
-    #
-    # express 預設 case sensitive routing 與 strict routing 都是 false。
-    #
-    # 這跟「未定義路由回 HTML」不是同一件事,別混在一起看:那件事我判不做,
-    # 因為契約不描述未宣告的路徑**回什麼**。這件事相反 —— 未宣告的路徑回了
-    # 一個**宣告過的成功回應**,等於在契約之外長出一片沒有人寫下來、client
-    # 卻依賴得到的相容面。跟 additionalProperties 那次是同一個原則的第四次
-    # 套用:未宣告的東西不該被默默接受。
-    #
-    # 【修正】開這張任務時我寫「修法是兩個 express 設定」,那是錯的。
-    # backend 在實作時指出來,我重測確認:
-    #
-    #   app.use('/projects', router)         /Projects=404  /projects/=200  /projects//=200
-    #   app.use(router) + 路徑寫在 router     /Projects=200  /projects/=200  /projects//=404
-    #
-    # 兩個都沒修好,原因是兩件我當初沒測到的事:
-    #   1. app.use(path, router) 的掛載點比對**寫死忽略 strict**,所以結尾
-    #      斜線那半永遠修不掉 —— 完整路徑必須寫進 router 自己的路由
-    #   2. Router() 不繼承 app 的設定,要自己帶
-    #      Router({ caseSensitive: true, strict: true })
-    #
-    # 我當初的實測用的是 app.get('/projects') 直接掛在 app 上,那個形狀確實
-    # 兩行就夠 —— 但那不是這個 repo 的結構。**測了一個不是待修對象的東西,
-    # 結論看起來有根據,其實沒有。**
-    #
-    # 實際的修法是三件事(#81),六個變體全部 404:
-    #   app.set('case sensitive routing', true) / app.set('strict routing', true)
-    #   Router({ caseSensitive: true, strict: true })
-    #   app.use(projectsRouter) —— 完整路徑寫在 router 內
-    #
-    # 實作 #81,AC-018 的 e2e 測試 #85。
-    #
-    # 風險:靠未文件化路徑呼叫的 client 會壞。查過,本 repo 沒有 ——
-    # frontend/src/api-client.ts 三處都是小寫無斜線,e2e 只用 '/projects'
-    # 與 '/projects/does-not-exist'。
-    #
-    # AC 刻意只斷言「不是成功的列表回應」而不斷言 404 的 body 形狀:
-    # 那些路徑落在契約之外,回應長什麼樣不是契約管的事。
+    decisions:
+      - "contract/decisions/ADR-006-no-silent-acceptance.md"
     status: done
     depends_on: []
     contract_refs:
