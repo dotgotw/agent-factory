@@ -107,7 +107,8 @@ script:`pnpm whoami` 不會跑到這裡,而是去查 registry 的登入狀態,�
 ```bash
 pnpm role          # 我是誰、我能寫哪裡
 pnpm task TASK-042 # 一個任務的完整內容
-pnpm tasks --owner backend --status todo   # 條件查詢;--ac AC-017 反查
+pnpm tasks --owner backend --status open   # 條件查詢;--ac AC-017 反查
+                   # 狀態是算出來的:done / blocked / open (n/m AC),見 ADR-007
 pnpm gen:types     # contract -> 型別
 pnpm typecheck     # 三個 scope 各自 typecheck
 pnpm test:e2e      # 黑箱驗收測試

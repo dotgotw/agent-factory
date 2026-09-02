@@ -6,6 +6,16 @@
  *
  * CR 的狀態是 markdown 文字,沒有型別、沒有 schema,靠人眼看不出漂移。
  * 本腳本補上這個缺口:讓「流程狀態」跟 contract 一樣受 CI 保護。
+ *
+ * ## 少了一條檢查,而且是刻意的(ADR-007)
+ *
+ * 這裡本來有一條「任務標成 blocked,但它引用的 CR 已經 accepted / rejected」的
+ * 漂移檢查。ADR-007 把 blocked 改成推導 —— 它現在是 blockedByCrs() 的輸出,
+ * 是 CR 狀態的函數,不可能跟 CR 不一致。**那個錯誤類別由構造消失了**,所以整段
+ * 連同錯誤訊息一起刪掉,不是留著空跑:一條永遠不會觸發的檢查會讓讀的人以為
+ * 這件事有人在看。
+ *
+ * 同理刪掉了它的鏡像(proposed 的 CR 宣稱阻擋某個非 blocked 的任務)。
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -107,6 +117,42 @@ export function pendingSummary(crs) {
   return `${proposed.length} 份 CR 仍為 proposed,最舊的一份是 ${proposed[0]}`;
 }
 
+/**
+ * 讀 change-requests/ 的所有 CR。
+ *
+ * ADR-007 之後這也是 blocked 的來源:blocked 不再是有人寫在 tasks.yaml 裡的值,
+ * 而是「有一份 proposed 的 CR 指名它」的函數。check:ac 與 pnpm tasks 都從這裡問,
+ * 不各自 parse 一次。
+ */
+export function readCrs(crDir = join(rootDir, 'change-requests')) {
+  return readdirSync(crDir)
+    .filter((f) => /^CR-\d+\.md$/.test(f))
+    .sort()
+    .map((file) => {
+      const text = readFileSync(join(crDir, file), 'utf8');
+      return {
+        id: basename(file, '.md'),
+        file,
+        text,
+        proposer: field(text, '提出者'),
+        status: field(text, '狀態'),
+        blocks: field(text, '阻擋任務'),
+      };
+    });
+}
+
+/** 每個任務被哪些 proposed 的 CR 擋著。回傳 Map(taskId -> [CR id])。 */
+export function blockedByCrs(crs = readCrs()) {
+  const map = new Map();
+  for (const cr of crs) {
+    if (cr.status !== 'proposed') continue;
+    for (const ref of (cr.blocks ?? '').match(/TASK-\d+/g) ?? []) {
+      map.set(ref, [...(map.get(ref) ?? []), cr.id]);
+    }
+  }
+  return map;
+}
+
 // ---------- 主流程 ----------
 
 function main() {
@@ -133,13 +179,12 @@ function main() {
   }
   const templateText = readFileSync(templatePath, 'utf8');
 
-  const taskById = new Map(tasks.map((t) => [t.id, t]));
+  const taskIds = new Set(tasks.map((t) => t.id));
   const roles = Object.keys(JSON.parse(readFileSync(scopePath, 'utf8')).roles);
 
   // ---------- 解析 CR ----------
-  const crFiles = readdirSync(crDir)
-    .filter((f) => /^CR-\d+\.md$/.test(f))
-    .sort();
+  const allCrs = readCrs(crDir);
+  const crFiles = allCrs.map((c) => c.file);
 
   if (crFiles.length === 0) {
     console.log('（尚無 CR,略過檢查）');
@@ -148,9 +193,7 @@ function main() {
 
   const crs = new Map();
 
-  for (const file of crFiles) {
-    const id = basename(file, '.md');
-    const text = readFileSync(join(crDir, file), 'utf8');
+  for (const { id, file, text, proposer, status, blocks } of allCrs) {
     const at = (msg) => errors.push(`${file}: ${msg}`);
 
     // 標題必須與檔名一致,避免複製 CR 時忘了改編號。
@@ -158,10 +201,6 @@ function main() {
     if (title !== id) {
       at(`標題編號 ${title ?? '(缺標題)'} 與檔名不符`);
     }
-
-    const proposer = field(text, '提出者');
-    const status = field(text, '狀態');
-    const blocks = field(text, '阻擋任務');
 
     if (!proposer) at('缺少「提出者」');
     else if (!roles.includes(proposer)) {
@@ -194,60 +233,17 @@ function main() {
       }
     }
 
+    // 阻擋任務指到的編號必須存在。
+    //
+    // ADR-007 之前這只是個沒人用的欄位;之後 blocked 是它的函數 —— CR 裡把
+    // TASK-008 打成 TASK-808,那張任務就不會被 blocked,而且沒有任何一條紅線。
+    // 打錯字很便宜(同 decisions 指標與 verified_record.commit 那兩條)。
+    for (const ref of (blocks ?? '').match(/TASK-\d+/g) ?? []) {
+      if (!taskIds.has(ref)) at(`阻擋任務 ${ref} 不存在於 tasks.yaml`);
+    }
+
     crs.set(id, { file, status, blocks });
   }
-
-  // ---------- 交叉比對:blocked 任務 vs CR 狀態 ----------
-  for (const task of tasks) {
-    if (task.status !== 'blocked') continue;
-
-    const reason = task.blocked_reason ?? '';
-    const refs = reason.match(/CR-\d+/g) ?? [];
-
-    if (refs.length === 0) {
-      errors.push(`tasks.yaml: ${task.id} 狀態為 blocked,但 blocked_reason 未引用任何 CR`);
-      continue;
-    }
-
-    for (const ref of refs) {
-      const cr = crs.get(ref);
-      if (!cr) {
-        errors.push(`tasks.yaml: ${task.id} 引用了不存在的 ${ref}`);
-        continue;
-      }
-      // CR 已裁決但任務還卡著 —— 這正是人眼會漏掉的漂移。
-      if (cr.status === 'accepted') {
-        errors.push(
-          `tasks.yaml: ${task.id} 仍為 blocked,但 ${ref} 已 accepted。` +
-            `contract 應已更新,請將此任務改為 todo。`,
-        );
-      } else if (cr.status === 'rejected') {
-        errors.push(
-          `tasks.yaml: ${task.id} 仍為 blocked,但 ${ref} 已 rejected。` +
-            `此任務不會被解除阻擋,請重新規劃或關閉。`,
-        );
-      }
-    }
-  }
-
-  // ---------- 提醒:accepted 的 CR 是否還有人卡著 ----------
-  for (const [, cr] of crs) {
-    if (cr.status !== 'proposed') continue;
-    const refs = (cr.blocks ?? '').match(/TASK-\d+/g) ?? [];
-    for (const ref of refs) {
-      const task = taskById.get(ref);
-      if (task && task.status !== 'blocked') {
-        warnings.push(
-          `${cr.file}: 狀態為 proposed 且宣稱阻擋 ${ref},` +
-            `但該任務狀態是 "${task.status}" 而非 blocked。`,
-        );
-      }
-    }
-  }
-
-  // 等裁決的 CR。放在最後 push,所以它是提醒列表的最後一行。
-  const pending = pendingSummary(crs);
-  if (pending) warnings.push(pending);
 
   // ---------- 輸出 ----------
   console.log(`檢查 ${crFiles.length} 份 CR、${tasks.length} 個任務`);

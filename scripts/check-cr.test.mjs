@@ -15,7 +15,14 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { field, pendingSummary, rulingVerdict, sectionOf } from './check-cr.mjs';
+import {
+  blockedByCrs,
+  field,
+  pendingSummary,
+  readCrs,
+  rulingVerdict,
+  sectionOf,
+} from './check-cr.mjs';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const crDir = join(rootDir, 'change-requests');
@@ -137,4 +144,30 @@ test('CLI 的輸出與 change-requests/ 的實際狀態一致', () => {
   } else {
     assert.match(out, new RegExp(`${proposed.length} 份 CR 仍為 proposed,最舊的一份是 ${proposed[0]}`));
   }
+});
+
+// ---------- ADR-007:blocked 是 CR 的函數 ----------
+
+test('只有 proposed 的 CR 會擋住任務', () => {
+  const crs = [
+    { id: 'CR-100', status: 'proposed', blocks: 'TASK-001、TASK-002' },
+    { id: 'CR-101', status: 'accepted', blocks: 'TASK-003' },
+    { id: 'CR-102', status: 'rejected', blocks: 'TASK-004' },
+    { id: 'CR-103', status: 'proposed', blocks: '無' },
+    { id: 'CR-104', status: 'proposed', blocks: 'TASK-001' },
+  ];
+  const map = blockedByCrs(crs);
+  assert.deepEqual(map.get('TASK-001'), ['CR-100', 'CR-104'], '同一張任務可以被多份 CR 擋著');
+  assert.deepEqual(map.get('TASK-002'), ['CR-100']);
+  assert.equal(map.get('TASK-003'), undefined, '已裁決的 CR 不再擋');
+  assert.equal(map.get('TASK-004'), undefined);
+  assert.equal(map.size, 2);
+});
+
+test('readCrs 讀得到真實的 CR,而且現況沒有人被擋著', () => {
+  const crs = readCrs();
+  assert.ok(crs.length > 0);
+  for (const cr of crs) assert.match(cr.id, /^CR-\d+$/);
+  // 全部 accepted —— 若哪天有 proposed 的 CR 指名某張任務,那張任務就會算成 blocked
+  assert.equal(blockedByCrs(crs).size, 0);
 });

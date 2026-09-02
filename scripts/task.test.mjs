@@ -17,6 +17,7 @@ import { dirname, join } from 'node:path';
 import {
   STATUSES,
   filterTasks,
+  withDerived,
   findAc,
   findTask,
   formatList,
@@ -73,8 +74,12 @@ test('合法的條件解析成 filters', () => {
   assert.deepEqual(r.filters, { owner: 'backend', status: 'done' });
 });
 
-test('STATUSES 與 tasks.yaml 檔頭的五個值一致', () => {
-  assert.deepEqual(STATUSES, ['todo', 'in_progress', 'blocked', 'review', 'done']);
+test('STATUSES 是算出來的三個值,不是舊的五個(ADR-007)', () => {
+  assert.deepEqual(STATUSES, ['open', 'blocked', 'done']);
+  // todo / in_progress / review 是意圖不是保證,已經移出 contract。
+  for (const gone of ['todo', 'in_progress', 'review']) {
+    assert.ok(!STATUSES.includes(gone), `${gone} 不該還是合法的查詢條件`);
+  }
 });
 
 // ---------- 查詢 ----------
@@ -82,15 +87,20 @@ test('STATUSES 與 tasks.yaml 檔頭的五個值一致', () => {
 test('findTask / findAc / filterTasks', () => {
   const tasks = [
     task(),
-    task({ id: 'TASK-901', owner: 'frontend', status: 'done', acceptance: [{ id: 'AC-901', text: 'x' }] }),
+    task({ id: 'TASK-901', owner: 'frontend', status: 'done', acceptance: [{ id: 'AC-901', text: 'x', verified_by: 'e2e' }] }),
   ];
   assert.equal(findTask(tasks, 'TASK-901').owner, 'frontend');
   assert.equal(findTask(tasks, 'TASK-999'), null);
   assert.equal(findAc(tasks, 'AC-901').task.id, 'TASK-901');
   assert.equal(findAc(tasks, 'AC-999'), null);
   assert.equal(filterTasks(tasks, { owner: 'frontend' }).length, 1);
-  assert.equal(filterTasks(tasks, { status: 'done' }).length, 1);
-  assert.equal(filterTasks(tasks, { owner: 'backend', status: 'done' }).length, 0);
+  // status 篩的是算出來的值,不是 tasks.yaml 裡寫的
+  const derived = withDerived(tasks, { covered: new Set(['AC-901']) });
+  assert.deepEqual(
+    filterTasks(derived, { status: 'done' }).map((t) => t.id),
+    ['TASK-901'],
+  );
+  assert.equal(filterTasks(derived, { owner: 'backend', status: 'done' }).length, 0);
   assert.equal(filterTasks(tasks, { ac: 'AC-900' })[0].id, 'TASK-900');
 });
 
@@ -119,8 +129,7 @@ test('沒有 decisions 的任務,輸出會說它沒有家', () => {
 test('formatTask 印得出狀態、依賴、AC 與人工驗收紀錄', () => {
   const out = formatTask(
     task({
-      status: 'blocked',
-      blocked_reason: '等 CR-999',
+      derived: { status: 'blocked', done: 0, total: 1, blockedBy: ['CR-999'] },
       depends_on: ['TASK-001'],
       acceptance: [
         {
@@ -133,7 +142,7 @@ test('formatTask 印得出狀態、依賴、AC 與人工驗收紀錄', () => {
       ],
     }),
   ).join('\n');
-  for (const want of ['blocked', '等 CR-999', 'TASK-001', 'AC-900', 'manual', '打不到畫面', 'abc1234', '看到某個東西']) {
+  for (const want of ['blocked', 'CR-999', 'TASK-001', 'AC-900', 'manual', '打不到畫面', 'abc1234', '看到某個東西']) {
     assert.ok(out.includes(want), `輸出應該包含 ${want}`);
   }
 });

@@ -20,7 +20,10 @@ import { auditTasks, collectAcIds, normalize, repoDeps } from './check-ac.mjs';
 import { STATUSES } from './task.mjs';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
-const audit = (tasks, ids = [], deps = {}) => auditTasks(tasks, new Set(ids), deps);
+// baseDone 預設給空集合:大多數測試不驗退步,不該每一條都收到「取不到 base ref」
+// 的提醒。要驗退步的測試自己傳。
+const audit = (tasks, ids = [], deps = {}) =>
+  auditTasks(tasks, new Set(ids), { baseDone: new Set(), ...deps });
 
 /** 一筆合格的人工驗收紀錄。 */
 const record = (over = {}) => ({
@@ -45,10 +48,13 @@ test('done + e2e + 有測試 → 過', () => {
   assert.deepEqual(r.errors, []);
 });
 
-test('done + e2e + 沒測試 → 紅', () => {
-  const r = audit([task({ acceptance: [{ id: 'AC-900', verified_by: 'e2e' }] })]);
-  assert.equal(r.errors.length, 1);
-  assert.match(r.errors[0], /要標 done,先讓 AC 有測試/);
+test('e2e 的 AC 沒有測試 → 不是錯,只是還不算 done(ADR-007)', () => {
+  // 推導之前這裡是紅的:「你標了 done,但沒有測試」。推導之後 done 不是宣告,
+  // 所以缺測試的後果變成「這張任務算不到 done」,而不是「有人說謊」。
+  // 真正該紅的那件事(本來 done、現在不是)由退步比對負責,見下面那組。
+  const r = audit([task({ acceptance: [{ id: 'AC-900', text: 'x', verified_by: 'e2e' }] })]);
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.rows[0].status, 'open (0/1 AC)');
 });
 
 test('todo + e2e + 沒測試 → 過(還沒開工不是漂移)', () => {
@@ -118,10 +124,10 @@ test('現況是綠的 —— 這個檢查在乾淨的狀態上線(CR-006 裁決�
 
 // ---------- CR-011:verified_record 的三條規則 ----------
 
-test('規則 1:done + manual + 沒有 verified_record → 紅', () => {
+test('manual 的 AC 沒有紀錄 → 不是錯,只是還沒有證據(ADR-007)', () => {
   const r = audit([task({ owner: 'frontend', acceptance: [manualAc()] })]);
-  assert.equal(r.errors.length, 1);
-  assert.match(r.errors[0], /必須有 verified_record/);
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.rows[0].status, 'open (0/1 AC)');
 });
 
 test('規則 1 只對 done:review 期間沒有紀錄不算漂移', () => {
@@ -256,23 +262,10 @@ test('現況的 decisions 全部指得到 —— 這條檢查上線不需要遷�
   }
 });
 
-// ---------- tasks.yaml 的三個欄位不能打錯字 ----------
-
-test('status 打錯字 → 紅', () => {
-  const r = audit([task({ status: 'doen' })]);
-  assert.equal(r.errors.length, 1);
-  assert.match(r.errors[0], /status "doen" 不是合法值/);
-  // 五個合法值都要過
-  for (const status of STATUSES) {
-    assert.deepEqual(audit([task({ status })]).errors, [], `${status} 應該合法`);
-  }
-});
-
-test('缺 status → 紅(不給預設值)', () => {
-  const t = task();
-  delete t.status;
-  assert.match(audit([t]).errors[0], /status "\(缺\)"/);
-});
+// ---------- tasks.yaml 的欄位不能打錯字 ----------
+//
+// status 那兩條在 ADR-007 之後刪掉了:沒有人讀那個欄位,architect 的下一張會把它
+// 從 tasks.yaml 整個拿掉。owner 與 depends_on 與本決策無關,仍然有效。
 
 test('owner 打錯字 → 紅,而且說出它會關掉什麼', () => {
   // 這條不只是「查不到」:未知的 owner 讓 ownerPaths 回 [],
@@ -308,4 +301,51 @@ test('現況的 status / owner / depends_on 全部合法 —— 上線不需要�
     assert.ok(roles.includes(t.owner), `${t.id} 的 owner`);
     for (const d of t.depends_on ?? []) assert.ok(ids.has(d), `${t.id} 的 depends_on ${d}`);
   }
+});
+
+// ---------- ADR-007:退步比對 ----------
+
+test('在 base 上是 done、在這裡不是 → 紅', () => {
+  // 這是 ADR-007 唯一的陷阱:推導把「done 掉了測試」從一條紅線變成一次
+  // 無聲的狀態變化。沒有這條比對,整個決策是淨損失。
+  const r = audit(
+    [task({ id: 'TASK-900', acceptance: [{ id: 'AC-900', text: 'x', verified_by: 'e2e' }] })],
+    [], // 沒有測試涵蓋 AC-900 → 現在不是 done
+    { baseDone: new Set(['TASK-900']) },
+  );
+  assert.equal(r.errors.length, 1);
+  assert.match(r.errors[0], /TASK-900 在 origin\/main 上是 done,在這裡不是/);
+  assert.match(r.errors[0], /掉了測試/);
+});
+
+test('任務被整個刪掉也算退步,而且訊息要說得出來', () => {
+  const r = audit([], [], { baseDone: new Set(['TASK-900']) });
+  assert.equal(r.errors.length, 1);
+  assert.match(r.errors[0], /被刪掉了/);
+});
+
+test('沒有退步就不吭聲', () => {
+  const r = audit(
+    [task({ id: 'TASK-900', acceptance: [{ id: 'AC-900', text: 'x', verified_by: 'e2e' }] })],
+    ['AC-900'],
+    { baseDone: new Set(['TASK-900']) },
+  );
+  assert.deepEqual(r.errors, []);
+});
+
+test('取不到 base ref → 出聲,但不擋', () => {
+  // 安靜跳過等於這一輪沒有退步偵測,而沒有人會知道。判紅則會讓離線或
+  // 淺 clone 的環境完全動不了 —— 那不是這支腳本能決定的事。
+  const r = auditTasks([task()], new Set(), { baseDone: null });
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.warnings.length, 1);
+  assert.match(r.warnings[0], /沒有做退步比對/);
+  assert.match(r.warnings[0], /fetch-depth/);
+});
+
+test('blocked 由 proposed 的 CR 算出來,顯示在那張表上', () => {
+  const r = audit([task({ id: 'TASK-900' })], ['AC-900'], {
+    blockedBy: new Map([['TASK-900', ['CR-014']]]),
+  });
+  assert.equal(r.rows[0].status, 'blocked(CR-014)');
 });
