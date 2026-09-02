@@ -17,6 +17,7 @@ import { load as parseYaml } from 'js-yaml';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { auditTasks, collectAcIds, normalize, repoDeps } from './check-ac.mjs';
+import { STATUSES } from './task.mjs';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const audit = (tasks, ids = [], deps = {}) => auditTasks(tasks, new Set(ids), deps);
@@ -252,5 +253,59 @@ test('現況的 decisions 全部指得到 —— 這條檢查上線不需要遷�
     for (const d of t.decisions ?? []) {
       assert.equal(deps.decisionExists(d), true, `${t.id} 的 ${d} 指不到`);
     }
+  }
+});
+
+// ---------- tasks.yaml 的三個欄位不能打錯字 ----------
+
+test('status 打錯字 → 紅', () => {
+  const r = audit([task({ status: 'doen' })]);
+  assert.equal(r.errors.length, 1);
+  assert.match(r.errors[0], /status "doen" 不是合法值/);
+  // 五個合法值都要過
+  for (const status of STATUSES) {
+    assert.deepEqual(audit([task({ status })]).errors, [], `${status} 應該合法`);
+  }
+});
+
+test('缺 status → 紅(不給預設值)', () => {
+  const t = task();
+  delete t.status;
+  assert.match(audit([t]).errors[0], /status "\(缺\)"/);
+});
+
+test('owner 打錯字 → 紅,而且說出它會關掉什麼', () => {
+  // 這條不只是「查不到」:未知的 owner 讓 ownerPaths 回 [],
+  // verified_record 的過期偵測就整條跳過 —— 一個錯字停用一個既有的守衛。
+  const r = audit([task({ owner: 'backedn' })], [], { roles: ['backend', 'frontend'] });
+  assert.equal(r.errors.length, 1);
+  assert.match(r.errors[0], /owner "backedn"/);
+  assert.match(r.errors[0], /過期偵測/);
+});
+
+test('沒給 roles 就不驗 owner —— 但 repoDeps 一定會給', () => {
+  assert.deepEqual(audit([task({ owner: 'backedn' })]).errors, []);
+  assert.ok(repoDeps().roles.includes('backend'));
+  assert.ok(repoDeps().roles.includes('qa'));
+  assert.equal(repoDeps().roles.length, 5);
+});
+
+test('depends_on 指到不存在的任務 → 紅', () => {
+  const tasks = [task({ id: 'TASK-900', depends_on: ['TASK-808'] })];
+  assert.match(audit(tasks).errors[0], /depends_on 指到不存在的 TASK-808/);
+
+  // 指得到就過(對照的是同一份 tasks.yaml 的 id,不需要外部來源)
+  const ok = [task({ id: 'TASK-900' }), task({ id: 'TASK-901', depends_on: ['TASK-900'] })];
+  assert.deepEqual(audit(ok).errors, []);
+});
+
+test('現況的 status / owner / depends_on 全部合法 —— 上線不需要遷移', () => {
+  const tasks = parseYaml(readFileSync(join(rootDir, 'contract', 'tasks.yaml'), 'utf8')).tasks;
+  const ids = new Set(tasks.map((t) => t.id));
+  const roles = repoDeps().roles;
+  for (const t of tasks) {
+    assert.ok(STATUSES.includes(t.status), `${t.id} 的 status`);
+    assert.ok(roles.includes(t.owner), `${t.id} 的 owner`);
+    for (const d of t.depends_on ?? []) assert.ok(ids.has(d), `${t.id} 的 depends_on ${d}`);
   }
 });
