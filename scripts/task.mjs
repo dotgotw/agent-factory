@@ -174,8 +174,11 @@ export function formatTask(task) {
     `  owner: ${task.owner ?? '(未指定)'}    status: ${task.derived ? formatStatus(task.derived) : '(未算)'}` +
       `    depends_on: ${(task.depends_on ?? []).join('、') || '(無)'}`,
   );
-  if (task.derived?.status === 'blocked') {
-    out.push(`  卡在: ${task.derived.blockedBy.join('、')}(proposed 的 CR)`);
+  // 擋著它的 CR 一律列出來,即使它已經 done —— done 蓋過 blocked 是狀態的選擇,
+  // 不是把資訊藏起來的理由。
+  if (task.derived?.blockedBy?.length) {
+    const 前綴 = task.derived.status === 'blocked' ? '卡在' : '有人提議改它';
+    out.push(`  ${前綴}: ${task.derived.blockedBy.join('、')}(proposed 的 CR)`);
   }
   if (task.blocked_reason) out.push(`  卡在: ${task.blocked_reason}`);
 

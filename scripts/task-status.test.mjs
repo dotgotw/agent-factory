@@ -84,14 +84,22 @@ test('沒有 AC 的任務不是 done —— 空集合不該當成保證', () => 
   assert.equal(formatStatus(d), 'open (0/0 AC)');
 });
 
-test('proposed 的 CR 指名它就是 blocked,而且蓋過 done', () => {
-  // 判斷:兩者同時成立時 blocked 勝出。理由是可行動性 —— 有人正在提議改這張
-  // 任務的條件,那件事比「舊條件都滿足了」更需要被看見。ADR-007 沒有指定,
-  // 這是 infra 的選擇,已回報 architect。
+test('proposed 的 CR 指名它就是 blocked —— 但 done 蓋過 blocked', () => {
   const task = { id: 'T', acceptance: [e2eAc('AC-1')] };
-  const d = derive(task, { covered: new Set(['AC-1']), blockedBy: ['CR-014'] });
-  assert.equal(d.status, 'blocked');
-  assert.equal(formatStatus(d), 'blocked(CR-014)');
+
+  // 還沒有證據 + 有人擋著 → blocked
+  const stuck = derive(task, { blockedBy: ['CR-014'] });
+  assert.equal(stuck.status, 'blocked');
+  assert.equal(formatStatus(stuck), 'blocked(CR-014)');
+
+  // 證據齊了 → done,即使有 proposed 的 CR 指名它。
+  //
+  // 第一版寫成 blocked 優先,實測撞到死結:對一張 done 的任務開 CR,它就不再是
+  // done,退步比對當場判紅,而開 CR 的人補不了任何東西 —— 逃生門把 CI 弄紅。
+  // done 優先也才是實話:提議改規格不會讓已經存在的證據消失。
+  const finished = derive(task, { covered: new Set(['AC-1']), blockedBy: ['CR-014'] });
+  assert.equal(finished.status, 'done');
+  assert.deepEqual(finished.blockedBy, ['CR-014'], '擋著它的 CR 仍然帶在結果裡,不是被丟掉');
 });
 
 // ---------- 真實 repo ----------

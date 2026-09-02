@@ -11,7 +11,7 @@
  * ## 三個值
  *
  *   done     每一條 AC 都有證據
- *   blocked  有一份 proposed 的 CR 指名它
+ *   blocked  還不是 done,而且有一份 proposed 的 CR 指名它
  *   open     其餘 —— 附上 (n/m AC) 說明差多遠
  *
  * `open (2/3 AC)` 表達的正是原本 `review` 想表達的東西,差別在它是量出來的。
@@ -122,7 +122,18 @@ export function deriveStatus(task, { covered, commitExists, blockedBy = [] } = {
     if (problem) problems.push({ ac: ac.id, problem });
   }
 
-  const status = blockedBy.length > 0 ? 'blocked' : acs.length > 0 && done === acs.length ? 'done' : 'open';
+  // done 蓋過 blocked,不是反過來。
+  //
+  // 第一版寫成 blocked 優先,實測撞到一個死結:對一張 done 的任務開一份
+  // proposed CR,它就不再是 done,退步比對當場判紅 —— 而開 CR 的人補不了任何
+  // 東西。**開 CR 是這套制度的逃生門,不能讓它把 CI 弄紅。**
+  //
+  // 而且 done 優先才是實話:證據還在那裡,提議改規格並不會讓已經存在的證據
+  // 消失。blocked 的用途是「別動手,這張還沒定案」,對一張已經完成的任務沒有
+  // 那個意思。擋著它的 CR 不會因此看不見 —— pnpm task 一律列出來,check:cr
+  // 也會報「N 份 CR 仍為 proposed」。
+  const isDone = acs.length > 0 && done === acs.length;
+  const status = isDone ? 'done' : blockedBy.length > 0 ? 'blocked' : 'open';
   return { status, done, total: acs.length, blockedBy, problems };
 }
 
