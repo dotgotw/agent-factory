@@ -12,7 +12,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import {
@@ -124,26 +125,45 @@ test('accepted / rejected 不算在內', () => {
   assert.equal(line, '1 份 CR 仍為 proposed,最舊的一份是 CR-003');
 });
 
-test('CLI 的輸出與 change-requests/ 的實際狀態一致', () => {
-  // 不寫死「現在有幾份 proposed」—— 那會讓這條測試在下一張 CR 開出來時就紅,
-  // 而它要驗的是「接線有沒有接上」,不是 repo 今天的狀態。
-  const files = readdirSync(crDir).filter((f) => /^CR-\d+\.md$/.test(f));
-  const proposed = files
-    .map((f) => [f, field(readFileSync(join(crDir, f), 'utf8'), '狀態')])
-    .filter(([, status]) => status === 'proposed')
-    .map(([f]) => f.replace('.md', ''))
-    .sort((a, b) => Number(a.match(/\d+/)[0]) - Number(b.match(/\d+/)[0]));
+/** 一份合法的 proposed CR。 */
+const proposedCr = (id) =>
+  `# ${id}: 合成的\n\n- **提出者**: infra\n- **狀態**: proposed\n- **阻擋任務**: 無\n\n## 問題\n略\n\n---\n## Architect 裁決\n> 由 Architect 填寫。accepted 的話註明已更新的 contract 版本。\n`;
 
-  const out = execFileSync('node', [join(rootDir, 'scripts/check-cr.mjs')], {
-    encoding: 'utf8',
-    cwd: rootDir,
-  });
+const acceptedCr = (id) =>
+  `# ${id}: 合成的\n\n- **提出者**: infra\n- **狀態**: accepted\n- **阻擋任務**: 無\n\n## 問題\n略\n\n---\n## Architect 裁決\n**Accepted。** 這是一份夠長的裁決,足以通過字數下限的檢查。\n`;
 
-  if (proposed.length === 0) {
-    assert.doesNotMatch(out, /仍為 proposed/, '沒有 proposed 時不該印這行');
-  } else {
-    assert.match(out, new RegExp(`${proposed.length} 份 CR 仍為 proposed,最舊的一份是 ${proposed[0]}`));
+/** 用一份合成的 change-requests/ 跑 CLI,回傳它的輸出。 */
+function runCliWith(files) {
+  const dir = mkdtempSync(join(tmpdir(), 'cr-fixture-'));
+  try {
+    writeFileSync(join(dir, 'TEMPLATE.md'), TEMPLATE);
+    for (const [name, body] of Object.entries(files)) writeFileSync(join(dir, name), body);
+    return execFileSync('node', [join(rootDir, 'scripts/check-cr.mjs')], {
+      encoding: 'utf8',
+      cwd: rootDir,
+      env: { ...process.env, CR_DIR: dir },
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
+}
+
+test('CLI 真的印出那一行 —— 用合成的 CR,不看 repo 當下有幾份 proposed', () => {
+  // 上一版讀 change-requests/ 的實際狀態,而在第一份 proposed 的 CR 出現之前,
+  // 它一直走 proposed.length === 0 那一支**恆真通過**。代價是真的付了:
+  // 這條輸出的接線在 #91 被順手砍掉,13 張 PR 沒有任何測試出聲(qa 在 CR-014 抓到)。
+  //
+  // 拿 production 狀態當 fixture,等於讓「有沒有人在用這個功能」決定「測不測得到」。
+  const out = runCliWith({
+    'CR-900.md': proposedCr('CR-900'),
+    'CR-901.md': acceptedCr('CR-901'),
+  });
+  assert.match(out, /1 份 CR 仍為 proposed,最舊的一份是 CR-900/);
+});
+
+test('沒有 proposed 就不印那一行 —— 同一條線的反向', () => {
+  const out = runCliWith({ 'CR-900.md': acceptedCr('CR-900') });
+  assert.doesNotMatch(out, /仍為 proposed/);
 });
 
 // ---------- ADR-007:blocked 是 CR 的函數 ----------
@@ -164,10 +184,17 @@ test('只有 proposed 的 CR 會擋住任務', () => {
   assert.equal(map.size, 2);
 });
 
-test('readCrs 讀得到真實的 CR,而且現況沒有人被擋著', () => {
+test('readCrs 讀得到真實的 CR,算出來的 blocked 一律來自 proposed', () => {
+  // 上一版斷言 blockedByCrs(crs).size === 0,而我自己在註解裡寫著「若哪天有
+  // proposed 的 CR 指名某張任務」—— 那就是這個機制被正常使用的那一天。
+  // 同 CR-014 抓到的形狀:斷言「還沒有人用過」而不是斷言行為。
   const crs = readCrs();
   assert.ok(crs.length > 0);
   for (const cr of crs) assert.match(cr.id, /^CR-\d+$/);
-  // 全部 accepted —— 若哪天有 proposed 的 CR 指名某張任務,那張任務就會算成 blocked
-  assert.equal(blockedByCrs(crs).size, 0);
+
+  const proposed = new Set(crs.filter((c) => c.status === 'proposed').map((c) => c.id));
+  for (const [task, ids] of blockedByCrs(crs)) {
+    assert.match(task, /^TASK-\d+$/);
+    for (const id of ids) assert.ok(proposed.has(id), `${task} 被 ${id} 擋著,但它不是 proposed`);
+  }
 });

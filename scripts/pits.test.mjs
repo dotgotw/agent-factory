@@ -88,11 +88,15 @@ test('pitsFor 只給那個角色的,而且壞掉的形狀不算任何人的', ()
   assert.equal(pitsFor(null, pits).length, 0);
 });
 
-test('現況掃描是乾淨的 —— 文件裡的範例沒有被當成真的坑', () => {
-  // 這條是那個假陽性的回歸測試。ADR-009 與 AGENTS.md 裡都有示範用的標記,
-  // 它們一旦被算進去,每個 session 開場都會看到不存在的坑。
-  const pits = scanPits();
-  assert.deepEqual(pits, [], `不該有:${JSON.stringify(pits)}`);
+test('掃描結果裡不會出現被排除的檔案 —— 文件裡的範例不算真的坑', () => {
+  // 這條是那個假陽性的回歸測試:ADR-009 與 AGENTS.md 裡都有示範用的標記,
+  // 一旦被算進去,每個 session 開場都會看到不存在的坑。
+  //
+  // 上一版斷言的是「掃描結果是空的」,而那只在**還沒有任何真坑**時等價 ——
+  // 第一則真的坑註解一寫它就紅(qa 在 CR-014 抓到)。這條測試守的機制,
+  // 它的價值完全來自於有人會去用它,斷言卻說「沒有人用過」。
+  const leaked = scanPits().filter((p) => isSkipped(p.file));
+  assert.deepEqual(leaked, [], `被排除的檔案不該掃進來:${JSON.stringify(leaked)}`);
 });
 
 test('掃描出來的東西一律通過形狀檢查', () => {
