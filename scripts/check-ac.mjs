@@ -316,7 +316,12 @@ export function repoDeps(scope = loadScope()) {
 // ---------- 主流程 ----------
 
 function main() {
-  const tasksPath = join(rootDir, 'contract', 'tasks.yaml');
+  // TASKS_FILE / CR_DIR 讓測試餵合成的資料進來(比照 AC_BASE_REF)。
+  //
+  // blockedBy 那條接線在現行資料上**沒有任何可觀察的效果** —— 11 張任務全是 done,
+  // 而 done 蓋過 blocked(見 deriveStatus 的註解)。所以要測那條線,得先有一張
+  // 算得出 open 的任務,而那只能用合成的 tasks.yaml。
+  const tasksPath = process.env.TASKS_FILE ?? join(rootDir, 'contract', 'tasks.yaml');
   const e2eDir = join(rootDir, 'e2e');
 
   let tasks;

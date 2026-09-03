@@ -124,7 +124,7 @@ export function pendingSummary(crs) {
  * 而是「有一份 proposed 的 CR 指名它」的函數。check:ac 與 pnpm tasks 都從這裡問,
  * 不各自 parse 一次。
  */
-export function readCrs(crDir = join(rootDir, 'change-requests')) {
+export function readCrs(crDir = process.env.CR_DIR ?? join(rootDir, 'change-requests')) {
   return readdirSync(crDir)
     .filter((f) => /^CR-\d+\.md$/.test(f))
     .sort()

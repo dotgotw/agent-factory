@@ -12,7 +12,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { load as parseYaml } from 'js-yaml';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -449,4 +450,38 @@ test('AC 換順序不算結構變了 —— 集合一樣就是一樣', () => {
     base: base(['TASK-900'], [['TASK-900', before]]),
   });
   assert.equal(r.errors.length, 1, '少了 AC-901 的測試 → 真的退步,不該因為換順序就降級');
+});
+
+// ---------- 接線:blockedByCrs 有沒有真的接進推導 ----------
+
+test('CLI 真的把 blockedByCrs 接進推導 —— 用合成的任務與 CR', () => {
+  // 這條線在現行資料上**沒有可觀察的效果**:11 張任務全是 done,而 done 蓋過
+  // blocked(見 deriveStatus 的註解)。所以它被誤刪也不會有人出聲 —— 跟
+  // pendingSummary 同一個形狀(CR-014),只是更難發現,因為連「輸出少一行」都沒有。
+  //
+  // 要測它就得餵一張算得出 open 的任務進去。實測:有接線是 blocked(CR-900),
+  // 沒接線是 open (0/1 AC)。
+  const dir = mkdtempSync(join(tmpdir(), 'ac-wire-'));
+  try {
+    mkdirSync(join(dir, 'crs'));
+    writeFileSync(
+      join(dir, 'tasks.yaml'),
+      'tasks:\n' +
+        '  - id: TASK-900\n    title: 合成的任務\n    owner: backend\n    depends_on: []\n' +
+        '    acceptance:\n      - id: AC-900\n        text: 一條還沒有測試的驗收條件\n        verified_by: e2e\n',
+    );
+    writeFileSync(
+      join(dir, 'crs', 'CR-900.md'),
+      '# CR-900: 合成的\n\n- **提出者**: qa\n- **狀態**: proposed\n- **阻擋任務**: TASK-900\n\n## 問題\n略\n',
+    );
+
+    const out = execFileSync('node', [join(rootDir, 'scripts/check-ac.mjs')], {
+      encoding: 'utf8',
+      cwd: rootDir,
+      env: { ...process.env, TASKS_FILE: join(dir, 'tasks.yaml'), CR_DIR: join(dir, 'crs') },
+    });
+    assert.match(out, /TASK-900\s+backend\s+blocked\(CR-900\)/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
