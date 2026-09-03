@@ -377,6 +377,18 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
   }
 
   // main 動了沒:同樣**一行計數**(CR-016)。放在坑註解之前 —— 坑註解要留在最後。
+  //
+  // ⚠️  明說的欠帳:**這一行呼叫在 main 不領先本 worktree 時沒有測試覆蓋。**
+  // role.test.mjs 那條雙向測試會走「lib 說沒有 → 斷言輸出也沒有」那一支,
+  // 於是它擋得住「CLI 自己另外算一份」,擋不住「這行被刪掉」。要重構這幾行的人:
+  // 自己去 role.test.mjs 確認一次,不要只看綠燈。
+  //
+  // 為什麼不加一個可注入的 cwd 把它蓋起來:那會是 production 程式碼裡的第四個
+  // 測試用途開關(TASKS_FILE、CR_DIR、AC_BASE_REF 之後),而那個類別有一個已知的
+  // 退化方向 —— 有人拿它在正式流程裡指到別的地方,繞過真正的來源 —— 目前沒有防護。
+  // 這條線壞掉的後果是「開場少一行提醒」,不是算錯數字(會算錯的 readIncoming 本來
+  // 就可注入,而且有一個真的合成 git repo 在測)。用永久的接縫換便利性的覆蓋率,
+  // 不划算。哪天出現第五個需求,那是處理整個類別的訊號,不是再加一個的訊號。
   const incoming = summarizeIncoming(readIncoming(), role, config);
   if (incoming) {
     console.log('');
