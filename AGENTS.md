@@ -21,9 +21,12 @@
    `package.json` 說的是「這個角色被什麼約束、能 import 什麼」,一律歸 infra
    —— 把鎖裝上,鑰匙不能留在被鎖的人口袋裡。見 ADR-003。
 6. 送出前必須 `pnpm verify` 全綠 —— 但**幽靈依賴那半邊的權威在 CI,不在本機**。
-   模組解析會沿目錄樹往上走,所以在巢狀 worktree(`.claude/worktrees/<role>`)
-   裡,`check:boundaries` 會把「應該解析不到」的案例降級成 ⚠️ 並通過。
-   那代表「這裡問不出答案」,不代表答案是好的。路徑逃逸那半邊(`rootDir`)
+   模組解析會沿目錄樹往上走,在巢狀 worktree(`.claude/worktrees/<role>`)裡
+   逃到外層 checkout 的 `node_modules` 是真的、當場示範得出來的。只是現行兩個
+   fixture 的 specifier 剛好在上層找不到,所以本機**目前**也拿得到 3/3 硬判定。
+   **那是 pnpm 的 hoist 規則附帶給的,不是誰設計的** —— 換一個 specifier 就會
+   退化成 ⚠️,條件寫在 `scripts/check-boundaries.mjs` 選 specifier 那幾行旁邊。
+   ⚠️ 代表「這裡問不出答案」,不代表答案是好的。路徑逃逸那半邊(`rootDir`)
    與 `node_modules` 無關,本機一樣有效。見 ADR-003 的 #46 補充。
    **看到 ⚠️ 不可放寬 fixture** —— 那是把鎖拆掉,不是修檢查。
 

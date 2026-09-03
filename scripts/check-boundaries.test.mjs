@@ -18,7 +18,7 @@ import { dirname, join } from 'node:path';
 import { mkdtempSync, rmSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
-import { triageFixture, humanAge, clearStaleFixture } from './check-boundaries.mjs';
+import { triageFixture, humanAge, clearStaleFixture, CASES } from './check-boundaries.mjs';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -132,5 +132,39 @@ test('沒有殘留物時回 proceed,而且不會亂碰不存在的路徑', () =>
     assert.equal(clearStaleFixture(join(dir, 'nope.ts'), SOURCE).action, 'proceed');
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * 幽靈依賴的案例只有在「那個 specifier 逃不到外層 checkout」時才是硬判定,
+ * 而讓它逃不出去的是 pnpm 的 hoist 規則:**直接宣告的留在自己的 node_modules,
+ * 只有傳遞相依才平鋪到 root。** 保護是附帶的,不是設計的(見 check-boundaries.mjs
+ * 選 specifier 那段,以及 AGENTS.md #6)。
+ *
+ * 所以把「只用直接宣告的 specifier」變成機器檢查的:換成傳遞相依(像 `accepts`)
+ * 會讓那個案例在巢狀 worktree 裡解析到外層、降級成 ⚠️,而 ⚠️ 是「這裡問不出答案」,
+ * 不是「答案是好的」—— 那等於靜默把鎖拆掉一半,而且沒有任何其他測試會出聲。
+ */
+test('每個幽靈依賴的 specifier 都必須是某個 workspace 套件直接宣告的', () => {
+  const manifests = ['package.json', 'backend/package.json', 'frontend/package.json', 'e2e/package.json'];
+  const declared = new Set();
+  const workspaceNames = new Set();
+  for (const m of manifests) {
+    const pkg = JSON.parse(readFileSync(join(rootDir, m), 'utf8'));
+    if (pkg.name) workspaceNames.add(pkg.name);
+    for (const d of Object.keys(pkg.dependencies ?? {})) declared.add(d);
+    for (const d of Object.keys(pkg.devDependencies ?? {})) declared.add(d);
+  }
+
+  const ghosts = CASES.filter((c) => c.specifier);
+  assert.ok(ghosts.length > 0, '至少要有一個幽靈依賴案例,否則這條測試恆真');
+
+  for (const c of ghosts) {
+    assert.ok(
+      declared.has(c.specifier) || workspaceNames.has(c.specifier),
+      `${c.specifier} 既不是任何 workspace 套件直接宣告的依賴,也不是 workspace 套件本身。` +
+        ` 傳遞相依會被 pnpm 平鋪到 root,於是在巢狀 worktree 裡解析得到外層 checkout,` +
+        ` 這個案例會降級成 ⚠️ 而不是硬判定。換 specifier 前先讀 check-boundaries.mjs 的 CASES 註解。`,
+    );
   }
 });
