@@ -71,8 +71,54 @@ import { dirname, join, resolve } from 'node:path';
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TSC = join(rootDir, 'node_modules', '.bin', 'tsc');
 
-/** 三個負向案例,對應 ADR-003 決策表的兩種漏洞。 */
-const CASES = [
+/**
+ * 三個負向案例,對應 ADR-003 決策表的兩種漏洞。
+ *
+ * ## 選 specifier 的時候要知道的事(否則會靜默把鎖拆掉)
+ *
+ * AGENTS.md #6 說模組解析會沿目錄樹往上走,在巢狀 worktree 裡逃到外層 checkout。
+ * **那是真的,而且當場示範得出來** —— 在 `.claude/worktrees/<role>` 底下:
+ *
+ *   require.resolve('accepts', …from e2e)
+ *     → /Users/…/agent-factory/node_modules/accepts/index.js   ← 外層,不是 worktree
+ *
+ * 但下面兩個幽靈依賴的 specifier 逃不出去,原因是 pnpm 的 hoist 規則:
+ *
+ *   | specifier      | 誰宣告                  | 住哪                        | 上層找得到 |
+ *   |----------------|-------------------------|-----------------------------|-----------|
+ *   | express        | backend **直接宣告**    | backend/node_modules/       | ✗         |
+ *   | @af/backend    | workspace 套件          | 從不 hoist                  | ✗         |
+ *   | accepts        | 沒有人宣告(傳遞相依)  | 外層 root node_modules(100 項) | **✓** |
+ *
+ * **直接宣告的留在自己的 node_modules,只有傳遞相依才平鋪到 root。**
+ *
+ * 所以本機拿到硬 ✅ 不是因為我們設計得好,是**附帶的**。它會在兩種情況退化:
+ *
+ *   1. 有人把某個 specifier 換成一個**傳遞相依**(像 `accepts`)—— 它會解析到
+ *      外層,案例降級成 ⚠️,而 ⚠️ 是「這裡問不出答案」,不是「答案是好的」。
+ *   2. 改用 hoisting 佈局(`node-linker=hoisted`)。這一項是從 hoist 規則推的,
+ *      **沒有實測**。
+ *
+ * 第 1 種有機制擋著:check-boundaries.test.mjs 斷言每個 specifier 都是某個
+ * workspace 套件**直接宣告**的(或就是 workspace 套件本身)。換成傳遞相依會紅。
+ * 第 2 種沒有機制,只有這段話。
+ *
+ * ## 上面那些是用什麼量的(範圍要講清楚)
+ *
+ * 兩半的證據強度不一樣,別把它們當成同一件事:
+ *
+ * - **「tsc 解析不到 express / @af/backend」有機器每次複驗** —— 就是這支檢查
+ *   自己:`✅ … TS2307` 代表 tsc 真的在 fixture 那一行上報了 module not found。
+ *   鎖靠的是這一半,而它每次 `pnpm verify` 都被問一次。
+ * - **「accepts 逃到外層 checkout」只用 Node 的 `require.resolve` 示範過**,
+ *   沒有 tsc 版本。要有的話得在 `frontend/src` 或 `e2e/` 放一個 import 傳遞相依的
+ *   檔案,而那兩個目錄不是 infra 的 scope。兩者都沿 node_modules 往上走,
+ *   但這裡沒有實測 tsc 也會逃出去 —— 不要把它寫成已驗證的。
+ *
+ * 這不是頻率主張:`require.resolve` 是決定性的檔案系統查找,一次示範就足以
+ * 證明走訪會發生(跟間歇性紅燈那種要分母的情況不同)。
+ */
+export const CASES = [
   {
     name: 'frontend 不該解析得到 express(幽靈依賴)',
     project: 'frontend/tsconfig.json',
