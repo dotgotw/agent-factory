@@ -1,4 +1,5 @@
 import express from 'express';
+import type { AddressInfo } from 'node:net';
 import { projectsRouter } from './routes/projects.js';
 import { bodyParseErrorHandler } from './errors.js';
 
@@ -26,8 +27,19 @@ app.use(bodyParseErrorHandler);
 const port = Number(process.env.PORT ?? 3000);
 
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(port, () => {
-    console.log(`backend listening on :${port}`);
+  // CR-013:`PORT=0` 時 OS 是在**綁定的當下**指派號碼,選 port 與綁 port 變成同一個
+  // 系統呼叫 —— e2e 原本「先 listen(0) 拿號碼、關掉、再把號碼交給 backend 綁」中間
+  // 那個誰都能插進來的窗口就不存在了。
+  //
+  // 上面的 `??` 只在 null/undefined 觸發,所以 `PORT=0` 拿到 0、未設仍是 3000 ——
+  // dev:backend 與 .env.example 的 PORT=3000 不受影響。
+  //
+  // 印的是 server.address() 的實際值,不是 `port` 這個變數:`PORT=0` 時它就是 0,
+  // 印出 `:0` 對誰都沒用。
+  const server = app.listen(port, () => {
+    const { port: actual } = server.address() as AddressInfo;
+    // 坑(下一個踩的人:qa):這一行的格式是 e2e/server.ts 解析的介面,改字要一起改
+    console.log(`backend listening on :${actual}`);
   });
 }
 
