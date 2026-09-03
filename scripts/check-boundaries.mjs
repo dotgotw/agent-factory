@@ -33,11 +33,40 @@
  * 照樣紅。
  *
  * ⚠️  撞到「環境洩漏」時不要放寬 fixture。放寬 fixture 等於把鎖拆掉。
+ *
+ * ## 三、殘留的 fixture,以及它為什麼曾經是最難查的紅燈
+ *
+ * fixture 的壽命應該只有這支程式的一次執行。但 `finally` 擋不住 SIGKILL,
+ * 於是被硬殺的一次會在 e2e/ 留下一個檔案,而那個檔案:
+ *
+ *   - 被 .gitignore 蓋住(`*.boundary-fixture.ts`)→ `git status` 是乾淨的
+ *   - 落在 e2e/tsconfig.json 的 include(整個目錄的 .ts)裡 → `pnpm typecheck` 會編它
+ *
+ * 症狀因此是「verify 紅在一個我沒寫過、也看不見的檔案上」。下面第 105 行那段
+ * 診斷本來就是為這件事寫的,但它**在 verify 裡跑不到** —— 因為 verify 的順序
+ * 曾經是 `... && typecheck && check:boundaries && ...`,typecheck 先撞上殘留物
+ * 就退出了。architect 為此在自己的 worktree 裡卡了 12 小時。
+ *
+ * 修法是三層,缺一層都還會漏:
+ *
+ *   1. package.json 的 `verify` 把 `check:boundaries` 排到 `typecheck` **之前**,
+ *      這段診斷才有機會說話。這條順序是有負載的,`check-boundaries.test.mjs`
+ *      會盯著它,不要把它換回去。
+ *   2. 認得出自己的殘留物就直接清掉(見 `triageFixture`),不要叫人手動處理一個
+ *      他看不見的檔案。
+ *   3. 接住 SIGINT/SIGTERM,讓 Ctrl-C 這種最常見的「硬殺」根本不留殘留物。
+ *      SIGKILL 仍然接不住 —— 所以第 2 層還是必要的。
+ *
+ * ⚠️  有一個看起來更漂亮的修法:把 `*.boundary-fixture.ts` 從各 tsconfig 的
+ * include 排除掉,殘留物就再也不會弄紅 typecheck。**不要這樣做。** 這支檢查
+ * 成立的前提正是 tsc 真的把 fixture 編進 program(見上面「綁在檔名上」那段);
+ * 排除掉之後 fixture 不會產生任何錯誤,anchored 永遠是 false,三個案例會一起
+ * 變紅 —— 而把它們「修綠」的下一步就是放寬斷言,鎖就沒了。
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TSC = join(rootDir, 'node_modules', '.bin', 'tsc');
@@ -71,6 +100,65 @@ const CASES = [
   },
 ];
 
+/**
+ * 同一個目錄裡另一個 check:boundaries 正在跑的話,它的 fixture 會有多新?
+ *
+ * 整支跑完是「幾秒到幾十秒」的量級(三個案例,意外通過時多一次
+ * --traceResolution)。十分鐘遠遠涵蓋得住,而 architect 撞到的殘留物是 12 小時。
+ *
+ * 抓錯邊的代價不對稱,所以往保守的那邊放寬:
+ *   - 把「還活著的」誤判成殘留 → 對方的 tsc 少看到一個檔案 → 對方**紅**。吵,但看得見。
+ *   - 把「殘留的」誤判成還活著 → 退回原本的行為(拒絕並印診斷),不會更糟。
+ */
+const CONCURRENT_WINDOW_MS = 10 * 60 * 1000;
+
+/**
+ * fixture 已經存在時:這個檔案是誰的、能不能動。
+ *
+ * 純函式,不碰 fs —— 呼叫的人把讀到的東西餵進來。這樣測得到「十分鐘的邊界」
+ * 與「內容不一樣就不敢動」,不必真的去擺一個殘留物,也不必等十分鐘。
+ */
+export function triageFixture({ content, mtimeMs, now, source, windowMs = CONCURRENT_WINDOW_MS }) {
+  // 內容對不上就不是我們寫的。別人的檔案一律不動,即使它很舊。
+  if (content !== source) return { action: 'refuse', why: 'foreign' };
+
+  const ageMs = now - mtimeMs;
+  // 夠新 → 可能有另一個 run 正在用它,不能抽掉。
+  if (ageMs < windowMs) return { action: 'refuse', why: 'concurrent', ageMs };
+
+  return { action: 'clean', why: 'stale', ageMs };
+}
+
+/**
+ * fixture 存在的話,依 triageFixture 的判斷把殘留物清掉。
+ *
+ * 這一層碰 fs,但仍然接受任意路徑 —— 測試因此可以拿 tmpdir 裡的檔案驗
+ * 「真的被刪掉了」,而不是只驗那個純函式回傳什麼。CR-014 的另一半教訓:
+ * 函式綠、呼叫它的那條線被砍掉,測試不會出聲。
+ */
+export function clearStaleFixture(fixturePath, source, now = Date.now(), windowMs = CONCURRENT_WINDOW_MS) {
+  if (!existsSync(fixturePath)) return { action: 'proceed' };
+
+  const verdict = triageFixture({
+    content: readFileSync(fixturePath, 'utf8'),
+    mtimeMs: statSync(fixturePath).mtimeMs,
+    now,
+    source,
+    windowMs,
+  });
+
+  if (verdict.action === 'clean') rmSync(fixturePath, { force: true });
+  return verdict;
+}
+
+/** 把毫秒講成人看得懂的年紀。 */
+export function humanAge(ms) {
+  const mins = Math.floor(ms / 60000);
+  if (mins < 60) return `${mins} 分鐘`;
+  const hours = Math.floor(mins / 60);
+  return hours < 48 ? `${hours} 小時` : `${Math.floor(hours / 24)} 天`;
+}
+
 /** 跑 tsc,回傳輸出(不論成敗)。 */
 function tsc(args) {
   try {
@@ -90,84 +178,118 @@ function resolvedPath(project, specifier) {
   return hit ? hit[1] : null;
 }
 
-const failures = [];
-const leaks = [];
+function main() {
+  const failures = [];
+  const leaks = [];
 
-for (const c of CASES) {
-  const fixturePath = join(rootDir, c.fixture);
-  if (existsSync(fixturePath)) {
-    console.error(
-      `❌ ${c.fixture} 已經存在 —— 不覆蓋別人的檔案。\n` +
-        `   兩種可能:同一個目錄裡有另一個 check:boundaries 正在跑(fixture 是共用的檔案,\n` +
-        `   不同角色各自的 worktree 不會互撞,同一個目錄跑兩次會),或是上一次被硬殺留下的\n` +
-        `   殘留物。確認是後者再刪掉重跑。`,
-    );
-    process.exit(2);
+  // 已經建立、還沒清掉的 fixture。SIGINT/SIGTERM 靠它清乾淨 —— finally 接不到訊號。
+  let live = null;
+  for (const [sig, code] of [
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+  ]) {
+    process.on(sig, () => {
+      if (live) rmSync(live, { force: true });
+      process.exit(code);
+    });
   }
 
-  let verdict;
-  try {
-    writeFileSync(fixturePath, c.source, 'utf8');
-    const { out } = tsc(['-p', c.project]);
+  for (const c of CASES) {
+    const fixturePath = join(rootDir, c.fixture);
+    const existing = clearStaleFixture(fixturePath, c.source);
+    if (existing.action !== 'proceed') {
+      const verdict = existing;
+      if (verdict.action === 'refuse') {
+        console.error(
+          `❌ ${c.fixture} 已經存在 —— 不覆蓋別人的檔案。\n` +
+            (verdict.why === 'concurrent'
+              ? `   內容是這支檢查寫的,而且很新(${humanAge(verdict.ageMs)}前)——\n` +
+                `   同一個目錄裡多半有另一個 check:boundaries 正在跑(fixture 是共用的檔案,\n` +
+                `   不同角色各自的 worktree 不會互撞,同一個目錄跑兩次會)。\n` +
+                `   等它跑完再試;確定沒有別人在跑就直接刪掉重跑。`
+              : `   內容不是這支檢查寫的,所以不敢動它。\n` +
+                `   確認那不是你要留的東西之後,自己刪掉再重跑。`),
+        );
+        process.exit(2);
+      }
 
-    // 錯誤碼必須出現在 fixture 那一行上:同時證明「錯了」與「fixture 真的被編譯」。
-    const anchored = out
-      .split('\n')
-      .some((line) => line.includes(c.fixture) && line.includes(c.code));
-
-    if (anchored) {
-      verdict = { kind: 'pass' };
-    } else if (c.specifier) {
-      const where = resolvedPath(c.project, c.specifier);
-      const inside = where && where.startsWith(rootDir + '/');
-      verdict = where && !inside
-        ? { kind: 'leak', where }
-        : { kind: 'fail', out, where };
-    } else {
-      verdict = { kind: 'fail', out };
+      // 到這裡只剩一種可能:我們自己上次被硬殺留下的。清掉,而且要說出來 ——
+      // 這個檔案被 .gitignore 蓋住,不講的話它是完全隱形的。
+      console.log(
+        `⚠️  清掉殘留的 ${c.fixture}(${humanAge(verdict.ageMs)}沒動過)。\n` +
+          `   那是上一次 check:boundaries 被硬殺留下的:finally 擋不住 SIGKILL。\n` +
+          `   它被 .gitignore 蓋住,所以 git status 看不到,但 typecheck 編得到它。`,
+      );
     }
-  } finally {
-    rmSync(fixturePath, { force: true });
+
+    let verdict;
+    try {
+      writeFileSync(fixturePath, c.source, 'utf8');
+      live = fixturePath;
+      const { out } = tsc(['-p', c.project]);
+
+      // 錯誤碼必須出現在 fixture 那一行上:同時證明「錯了」與「fixture 真的被編譯」。
+      const anchored = out
+        .split('\n')
+        .some((line) => line.includes(c.fixture) && line.includes(c.code));
+
+      if (anchored) {
+        verdict = { kind: 'pass' };
+      } else if (c.specifier) {
+        const where = resolvedPath(c.project, c.specifier);
+        const inside = where && where.startsWith(rootDir + '/');
+        verdict = where && !inside ? { kind: 'leak', where } : { kind: 'fail', out, where };
+      } else {
+        verdict = { kind: 'fail', out };
+      }
+    } finally {
+      rmSync(fixturePath, { force: true });
+      live = null;
+    }
+
+    if (verdict.kind === 'pass') {
+      console.log(`✅ ${c.name} —— ${c.code}`);
+    } else if (verdict.kind === 'leak') {
+      leaks.push({ ...c, where: verdict.where });
+      console.log(`⚠️  ${c.name} —— 這個環境驗不了(見下)`);
+    } else {
+      failures.push({ ...c, out: verdict.out, where: verdict.where });
+      console.log(`❌ ${c.name} —— 期望 ${c.code},沒有出現`);
+    }
   }
 
-  if (verdict.kind === 'pass') {
-    console.log(`✅ ${c.name} —— ${c.code}`);
-  } else if (verdict.kind === 'leak') {
-    leaks.push({ ...c, where: verdict.where });
-    console.log(`⚠️  ${c.name} —— 這個環境驗不了(見下)`);
-  } else {
-    failures.push({ ...c, out: verdict.out, where: verdict.where });
-    console.log(`❌ ${c.name} —— 期望 ${c.code},沒有出現`);
+  if (leaks.length > 0) {
+    console.log(`\n⚠️  ${leaks.length} 個案例在這個環境驗不了:`);
+    for (const l of leaks) {
+      console.log(`   - ${l.specifier} 解析到 repo 之外:`);
+      console.log(`     ${l.where}`);
+    }
+    console.log('');
+    console.log('   模組解析會沿目錄樹往上走。若這個工作區在另一個 checkout 底下');
+    console.log('   (例如 .claude/worktrees/<role>),上層的 node_modules 會被撈到,');
+    console.log('   於是「應該解析不到」這種問題在這裡問不出答案。');
+    console.log('');
+    console.log('   CI 是乾淨 checkout,沒有上層,那裡才是這件事的權威。');
+    console.log('   **不要因此放寬 fixture** —— 那是把鎖拆掉,不是修檢查。');
   }
+
+  if (failures.length > 0) {
+    console.error(`\n❌ ${failures.length} 個邊界沒有守住:`);
+    for (const f of failures) {
+      console.error(`   - ${f.name}`);
+      console.error(`     期望 ${f.fixture} 出現 ${f.code}`);
+      if (f.where) console.error(`     實際解析到 repo 之內: ${f.where}`);
+      const head = (f.out ?? '').split('\n').filter(Boolean).slice(0, 3);
+      for (const line of head) console.error(`     | ${line}`);
+    }
+    console.error('\n   邊界的來源是各 tsconfig 的 rootDir 與各 package.json 的依賴宣告。');
+    console.error('   見 contract/decisions/ADR-003-role-boundaries-enforced-by-module-resolution.md');
+    process.exit(1);
+  }
+
+  console.log(`\n✅ ${CASES.length - leaks.length}/${CASES.length} 個邊界已驗證`);
 }
 
-if (leaks.length > 0) {
-  console.log(`\n⚠️  ${leaks.length} 個案例在這個環境驗不了:`);
-  for (const l of leaks) {
-    console.log(`   - ${l.specifier} 解析到 repo 之外:`);
-    console.log(`     ${l.where}`);
-  }
-  console.log('');
-  console.log('   模組解析會沿目錄樹往上走。若這個工作區在另一個 checkout 底下');
-  console.log('   (例如 .claude/worktrees/<role>),上層的 node_modules 會被撈到,');
-  console.log('   於是「應該解析不到」這種問題在這裡問不出答案。');
-  console.log('');
-  console.log('   CI 是乾淨 checkout,沒有上層,那裡才是這件事的權威。');
-  console.log('   **不要因此放寬 fixture** —— 那是把鎖拆掉,不是修檢查。');
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  main();
 }
-
-if (failures.length > 0) {
-  console.error(`\n❌ ${failures.length} 個邊界沒有守住:`);
-  for (const f of failures) {
-    console.error(`   - ${f.name}`);
-    console.error(`     期望 ${f.fixture} 出現 ${f.code}`);
-    if (f.where) console.error(`     實際解析到 repo 之內: ${f.where}`);
-    const head = (f.out ?? '').split('\n').filter(Boolean).slice(0, 3);
-    for (const line of head) console.error(`     | ${line}`);
-  }
-  console.error('\n   邊界的來源是各 tsconfig 的 rootDir 與各 package.json 的依賴宣告。');
-  console.error('   見 contract/decisions/ADR-003-role-boundaries-enforced-by-module-resolution.md');
-  process.exit(1);
-}
-
-console.log(`\n✅ ${CASES.length - leaks.length}/${CASES.length} 個邊界已驗證`);
