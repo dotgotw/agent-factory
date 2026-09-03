@@ -156,7 +156,12 @@ export function blockedByCrs(crs = readCrs()) {
 // ---------- 主流程 ----------
 
 function main() {
-  const crDir = join(rootDir, 'change-requests');
+  // CR_DIR 讓測試指到一份合成的 change-requests/。
+  //
+  // 不是為了方便:這條輸出的接線被砍掉過一次(#91),而當時的測試讀的是 repo 當下
+  // 的狀態 —— 那時沒有任何 proposed 的 CR,測試就走空分支恆真通過。拿 production
+  // 狀態當 fixture,等於讓「有沒有人在用」決定「測不測得到」。
+  const crDir = process.env.CR_DIR ?? join(rootDir, 'change-requests');
   const tasksPath = join(rootDir, 'contract', 'tasks.yaml');
   const scopePath = join(here, 'scope.json');
   const templatePath = join(crDir, 'TEMPLATE.md');
@@ -244,6 +249,15 @@ function main() {
 
     crs.set(id, { file, status, blocks });
   }
+
+  // 還有幾份 CR 在等裁決。走 warnings 通道,不判紅 —— proposed 不是錯誤,
+  // 只是需要有人看見。
+  //
+  // 這一行在 #78 上線過,被 #91 砍掉(我那張 PR 用區間切除刪掉 blocked 漂移檢查時,
+  // 把區間裡的這一行一起帶走了)。13 張 PR 沒有任何測試出聲,因為當時那條接線測試
+  // 讀的是 repo 當下的狀態,而那時沒有 proposed 的 CR。
+  const pending = pendingSummary(crs);
+  if (pending) warnings.push(pending);
 
   // ---------- 輸出 ----------
   console.log(`檢查 ${crFiles.length} 份 CR、${tasks.length} 個任務`);
