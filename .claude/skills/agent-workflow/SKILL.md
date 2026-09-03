@@ -1,6 +1,6 @@
 ---
 name: agent-workflow
-description: agent-factory 的角色工作流程 —— 確認自己的角色、被 scope 擋下來時怎麼開 CR、跑探針驗證與回報數字時要小心什麼、送 PR 前跑什麼、PR label 怎麼掛、CI 紅燈怎麼處理。當你在這個 repo 要開始一項任務、被 scope-guard 擋下、要跑探針驗證某件事或把實測數字回報給別人、要送出 PR,或 PR 的 CI 紅燈時使用。
+description: agent-factory 的角色工作流程 —— 確認自己的角色、被 scope 擋下來時怎麼開 CR、跑探針驗證與回報數字時要小心什麼、送 PR 前跑什麼、PR label 怎麼掛、怎麼定址到別的 session、CI 紅燈怎麼處理。當你在這個 repo 要開始一項任務、被 scope-guard 擋下、要跑探針驗證某件事或把實測數字回報給別人、要交辦或回覆別的 session、要送出 PR,或 PR 的 CI 紅燈時使用。
 ---
 
 # agent-factory 工作流程
@@ -103,7 +103,29 @@ echo "${PIPESTATUS[0]}"                                  # zsh 是 $pipestatus[1
 報數字的時候**把量的範圍寫出來**(排除了什麼、在哪個 ref 上)。同一句「有幾行」,
 排除 `.md` 之前與之後差了七倍,而兩個人各自報一個數字卻沒說範圍時,爭的會是錯的東西。
 
-## 6. CI 紅燈
+## 6. 交辦給別的 session
+
+兩條通道,各答一個問題:
+
+| 工具 | 回答的問題 | 用在 |
+|---|---|---|
+| `ListAgents` / `SendMessage` | **誰現在活著、能立刻處理** | 來回討論 |
+| `list_sessions` / `send_message` | **這台機器上有哪些 session** | 對方沒在跑時交辦 |
+
+**交辦前先跑一次 `ListAgents` 拿當下的名字。** peer name 是「這一輪的把手」,
+session 重啟就換一個 —— 沿用上一輪的名字會得到 `No agent named ... is reachable`,
+而那不代表對方不在。跨輪穩定的是 `list_sessions` 給的 `sessionId`(`local_…`)。
+
+對方沒在跑時用 `send_message` 帶 sessionId 直送,訊息會排隊等它被喚醒。
+
+**列表裡沒有 ≠ 不存在。** 實測(同一台機器、同一個時間點):停著的 session 在
+`list_sessions` 一直看得到(`isRunning: false`),在 `ListAgents` 裡可能以
+`offline` 出現、也可能整列不見。
+
+只查一條通道就下結論「那個 session 沒了」,是把**工具的視野**當成事實本身 ——
+跟上一節那三個探針同一個形狀,差別只在這次咬到的不是數字,是「有沒有這個東西」。
+
+## 7. CI 紅燈
 
 先看是哪個 job:
 
