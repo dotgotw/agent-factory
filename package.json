@@ -17,7 +17,7 @@
     "test:e2e": "node --import tsx --test e2e/*.spec.ts",
     "dev:backend": "tsx watch backend/src/index.ts",
     "dev:frontend": "node scripts/dev-frontend.mjs",
-    "verify": "pnpm test:scripts && pnpm check:drift && pnpm check:cr && pnpm check:pits && pnpm check:ac && pnpm typecheck && pnpm check:boundaries && pnpm test:e2e",
+    "verify": "pnpm test:scripts && pnpm check:drift && pnpm check:cr && pnpm check:pits && pnpm check:ac && pnpm check:boundaries && pnpm typecheck && pnpm test:e2e",
     "sync:agents": "node scripts/sync-agents.mjs"
   },
   "author": "",
