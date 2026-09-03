@@ -87,12 +87,26 @@ gh pr checks <PR> --watch --interval 15
 ```
 
 ```bash
-end=$((SECONDS+3600)); until [ "$(gh pr view <PR> --json state --jq .state)" != "OPEN" ] || [ $SECONDS -ge $end ]; do sleep 30; done; gh pr view <PR> --json number,state --jq '"#\(.number) \(.state)"'
+end=$((SECONDS+3600)); while [ $SECONDS -lt $end ]; do s=$(gh pr view <PR> --json state --jq .state 2>/dev/null) || s=""; if [ -n "$s" ] && [ "$s" != "OPEN" ]; then break; fi; sleep 30; done; gh pr view <PR> --json number,state --jq '"#\(.number) \(.state)"'
 ```
 
 - **上限 60 分鐘**,到時間就收掉,不要掛整天。
 - **不論怎麼結束都印出最後的狀態**,所以「合併了」與「到時間還沒合併」分得開。
   安靜消失的監看比沒有監看更糟 —— 你會以為自己還在等。
+- **`[ -n "$s" ]` 那半邊是承重的,不要簡化掉。** 上一版寫的是
+  `until [ "$(gh pr view …)" != "OPEN" ]`,而 `gh` 失敗時命令替換回傳**空字串**,
+  `[ "" != "OPEN" ]` 為真 —— 一次網路抖動就讓監看**立刻結束、exit 0、通知說
+  completed**,而 PR 根本沒合併。實測撞到的輸出長這樣:
+
+  ```
+  Post "https://api.github.com/graphql": unexpected EOF
+  #121 OPEN
+  ```
+
+  這個 bug 會生出**看起來像事實的假狀態**:撞到的人接著回報「#121 還沒合併」,
+  而那時它已經 merged 了。終止條件把「查不到」和「狀態變了」混成同一件事,
+  於是「不知道」被印成了一個確定的答案 —— 跟 §5 那條「問不出答案 ≠ 答案是否定的」
+  同一個形狀。
 - 合併之後回到自己的角色分支再開下一張:
   `git fetch origin && git checkout role/<你的角色> && git reset --hard origin/main`
   (疊放的 PR 在第一棒合併之後要 rebase,見 `README.md`)
@@ -115,18 +129,23 @@ echo "${PIPESTATUS[0]}"                                  # zsh 是 $pipestatus[1
 第一個讓四種探針全部顯示 exit=0,差一點就回報「這個修正沒有生效」;第二個讓一次
 失敗的刪除顯示成「成功刪除 0 個」;第三個只是印不出來,但它讓一輪驗證白跑。
 
-三條規矩:
+四條規矩:
 
 - **先接住再處理。** `cmd; rc=$?` 寫在下一行,不要讓 `$( )`、管線或 `printf` 的參數
   求值插在中間。
 - **要測的東西不要在看過之前就丟給計數器。** 先讓輸出出現,再數它。
 - **clone 出去驗證之前,確認 HEAD 真的有你要驗的東西。** 未 commit 的改動不會被
   `git clone` 帶走,而症狀是「新版沒生效」——結論會整個反過來。這個坑咬過兩次。
+- **破壞性指令不要跟它的前置檢查串在同一行。** `cat 監看輸出 && git reset --hard …`
+  執行 reset 的時候,你還沒讀到那份輸出 —— 而它上面就寫著 `#121 OPEN`。實例:
+  有人看到任務通知說「completed」就這樣串了,把兩個還沒進 main 的 commit 丟掉
+  (那次沒有損失,因為它們在遠端分支上,但那是運氣)。
+  **通知說「結束了」,不等於它結束時你要的狀態成立**;先讀,分行,再動手。
 
 報數字的時候**把量的範圍寫出來**(排除了什麼、在哪個 ref 上)。同一句「有幾行」,
 排除 `.md` 之前與之後差了七倍,而兩個人各自報一個數字卻沒說範圍時,爭的會是錯的東西。
 
-### 上面三條講工具壞掉。下面兩條講工具沒壞,而你讀錯了
+### 上面四條講工具壞掉、或你搶在它前面。下面兩條講工具沒壞,而你讀錯了
 
 **看到符合預期的結果時,回頭檢查同一份輸出裡有沒有不符合的。** 實例:有人為了確認
 「停掉的 session 不會出現在 `ListAgents`」而去看輸出,看到那一列確實不在,就寫下
