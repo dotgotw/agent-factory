@@ -45,7 +45,7 @@
  * 症狀因此是「verify 紅在一個我沒寫過、也看不見的檔案上」。下面第 105 行那段
  * 診斷本來就是為這件事寫的,但它**在 verify 裡跑不到** —— 因為 verify 的順序
  * 曾經是 `... && typecheck && check:boundaries && ...`,typecheck 先撞上殘留物
- * 就退出了。architect 為此在自己的 worktree 裡卡了 12 小時。
+ * 就退出了。architect 撞到的那一個在他的 worktree 裡躺了 12 小時才被發現。
  *
  * 修法是三層,缺一層都還會漏:
  *
