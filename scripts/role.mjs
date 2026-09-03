@@ -32,6 +32,7 @@
  * 取決於 Object.keys 的順序 —— 四個角色會從此開不了 CR,而開 CR 正是被
  * scope 擋下時唯一的合法出口。把逃生門關掉,剩下的選項只有繞過。
  */
+import { execFileSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -202,6 +203,69 @@ export function writablePathsFor(role, config = loadScope()) {
   return [...owned, ...derivedPathsFor(role, config)];
 }
 
+/**
+ * main 相對於本 worktree 前進了什麼(CR-016 的保證層)。
+ *
+ * 快路徑(merge 之後 postMessage 給還活著的 session)答的是「你那張 PR merge 了嗎」,
+ * 而它的地址是 session_id —— session 一關就沒了。這一層答的是**另一題**:
+ * 「main 在我不在的時候動了,而且動到我依賴的東西嗎?」地址是 worktree,不會消失。
+ *
+ * 從 git 推導,不建佇列。理由是這個 repo 已經用過兩次的同一招:ADR-002 讓衍生物由
+ * 重新生成把關,ADR-007 讓 status 用算的而不是用存的。算出來的東西不可能跟 git 漂移,
+ * 而且不必回答「這個目錄歸誰」—— 一個 notifications/ 佇列會立刻撞上 ADR-009:158。
+ *
+ * **刻意不 fetch。** 三個選項裡這個唯一不會說謊:
+ *   - 用舊的 ref:零延遲,但會**謊報「沒有東西」**
+ *   - 開場 fetch:準,但每個 session 開場都付一次網路延遲,離線還會失敗
+ *   - 不 fetch:漏報,但不誤報
+ * 漏報會被下一次 fetch 補上;誤報會訓練人忽略這一行,而被忽略的那行就等於不存在。
+ *
+ * 而漏報比想像中少:**同一個 repo 的所有 worktree 共用 refs**(HEAD 以外),
+ * 所以別的角色在他的 worktree 跑 fetch,你的 origin/main 也跟著更新。實測:
+ * 寫這段的時候本 worktree 沒有 fetch 過,卻正確報出 backend 剛合併的 #117。
+ * 這不是保證(全部 session 都不 fetch 就還是舊的),但它讓「不 fetch」這個
+ * 選擇的代價比帳面上小。
+ * 代價是「以本地已知的 origin/main 為準」必須寫進輸出本身 —— 見 summarizeIncoming,
+ * 一個沒有標明範圍的數字在 ref 過期時就是一句謊話。
+ */
+export function readIncoming(cwd = rootDir) {
+  const git = (args) =>
+    execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  try {
+    // 沒有 origin/main 就沒有這一題:還沒設 remote、乾淨 clone、CI 的 detached HEAD。
+    // 這不是錯誤,是「這裡問不出答案」,所以回 null 而不是拋。
+    git(['rev-parse', '--verify', '--quiet', 'origin/main']);
+    return {
+      count: Number(git(['rev-list', '--count', 'HEAD..origin/main']).trim()),
+      files: git(['diff', '--name-only', 'HEAD...origin/main']).split('\n').filter(Boolean),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 那些檔案裡,哪些是這個角色自己的。 */
+export function incomingForRole(incoming, role, config = loadScope()) {
+  if (!incoming) return [];
+  return incoming.files.filter((f) => classifyPath(f, role, config).kind === 'owned');
+}
+
+/**
+ * 開場那一行。沒有東西進來(或這裡問不出答案)就回 null —— 不製造常駐噪音。
+ *
+ * **永遠只有一行,不論 main 領先幾個 commit。** 跟坑註解同一條規則、同一個理由
+ * (ADR-009:105-113):這段輸出每個 session 都要付,而且是注意力最稀缺的那一刻。
+ * 細節用 `pnpm role --incoming` 查。
+ */
+export function summarizeIncoming(incoming, role, config = loadScope()) {
+  if (!incoming || incoming.count === 0) return null;
+  const mine = incomingForRole(incoming, role, config);
+  return (
+    `main 領先 ${incoming.count} 個 commit,其中 ${mine.length} 個檔案在你的 scope 內` +
+    `(未 fetch,以本地已知的 origin/main 為準;pnpm role --incoming 看細節)`
+  );
+}
+
 /** 目前 session 的角色;未指派回傳 null。 */
 export function resolveRole() {
   const fromEnv = process.env.AGENT_ROLE?.trim();
@@ -258,6 +322,31 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     process.exit(0);
   }
 
+  // --incoming 同樣是查詢,不是開場橫幅:細節在這裡,開場只留一行計數。
+  if (process.argv.includes('--incoming')) {
+    const incoming = readIncoming();
+    if (!incoming) {
+      console.log('這裡問不出答案:找不到 origin/main(還沒設 remote,或這裡不是 git 工作區)。');
+      process.exit(0);
+    }
+    const scope = '未 fetch,以本地已知的 origin/main 為準';
+    if (incoming.count === 0) {
+      console.log(`main 沒有領先本 worktree(${scope})。`);
+      process.exit(0);
+    }
+    console.log(`main 領先 ${incoming.count} 個 commit,碰到 ${incoming.files.length} 個檔案(${scope}):`);
+    for (const f of incoming.files) {
+      const c = classifyPath(f, role, config);
+      const tag =
+        c.kind === 'owned' ? '你的' :
+        c.kind === 'everyone' ? '共用' :
+        c.kind === 'derived' ? '衍生' :
+        c.kind === 'foreign' ? c.owner : c.kind;
+      console.log(`  [${tag}] ${f}`);
+    }
+    process.exit(0);
+  }
+
   const allowed = allowedPathsFor(role, config);
   if (!allowed) {
     console.error(`❌ 未知角色: ${role}`);
@@ -268,6 +357,9 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
   console.log(`角色: ${role}`);
   console.log(`可寫路徑: ${allowed.join('、')}`);
   console.log(`說明: ${config.roles[role].note}`);
+  // CR-015 的主規則。這裡是唯一會在 session **開場**被看到的地方,而這條規則
+  // 也只有在開場才管用 —— 它不必偵測 context 長多大,只要把預設值講一次。
+  console.log('這條 session 要做哪個任務?做完就關 —— 換任務換 session(見 AGENTS.md)。');
 
   const exceptions = exceptionsFor(role, config);
   if (exceptions.length > 0) {
@@ -282,6 +374,13 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     console.log(`可夾帶的衍生路徑: ${derived.join('、')}`);
     console.log('  這些不是你的檔案,是生成器的輸出。你可以在自己的 PR 裡帶著');
     console.log('  重新生成的結果一起送,但內容對不對由 check:drift 說了算。');
+  }
+
+  // main 動了沒:同樣**一行計數**(CR-016)。放在坑註解之前 —— 坑註解要留在最後。
+  const incoming = summarizeIncoming(readIncoming(), role, config);
+  if (incoming) {
+    console.log('');
+    console.log(incoming);
   }
 
   // 坑註解:**一行計數**,而且放在最後 —— 讀的人最後看到的是它(ADR-009 補充)。

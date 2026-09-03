@@ -29,6 +29,10 @@ if ! git diff --exit-code generated/ AGENTS.md; then
   echo "❌ generated/ 或 AGENTS.md 與重新生成的結果不同。"
   echo "   要嘛有人手改了衍生檔案,要嘛改了生成器的輸入卻忘記重新生成。"
   echo "   跑一次 pnpm gen:types(或 pnpm sync:agents)並一併 commit。"
+  echo ""
+  echo "   還有第三種可能,而且它看起來最像壞掉:這個檢查比對的是**工作區與 HEAD**,"
+  echo "   所以 AGENTS.md 只要有未 commit 的手寫改動(例如在標記之外新增一節),"
+  echo "   即使生成器說「已是最新狀態」它一樣會紅。先 commit 再跑。"
   exit 1
 fi
 

@@ -40,6 +40,26 @@
 `pnpm role` 會在他開場時提醒。判準與完整的表在
 `contract/decisions/ADR-009-where-knowledge-lives.md` —— 這裡是目錄,不是知識庫。
 
+## session 是拋棄式的
+
+**一個任務一條 session。** 換任務就換 session —— 不是因為 context 會滿,
+是因為 context 是稅率不是餘額:每一輪都按當下的大小抽成,而上一個任務留下的
+那一段,從任務結束的那一刻起就只剩稅,沒有用途。
+
+粗略的價目:**每 100k context,熱的時候每輪約抽 0.25% 的 5 小時額度;
+隔超過一小時再回來,那一次是 3%**(快取 TTL 是 1 小時,過期整份要以 1.25x 重寫)。
+一條 800k 的 session 光是醒來說一句話就是四分之一的額度。
+
+到了任務邊界卻**關不掉**,那是狀態還沒落地的信號 —— 決策進 `contract/decisions/`,
+跨 scope 的進 `change-requests/`,下一個人會再踩的留坑註解。寫完就關得掉了,
+而關掉是免費的。
+
+(做到一半、還不能收尾但 context 已經很大 —— 那才是壓縮的場合。
+在任務邊界上,關掉嚴格優於壓縮。)
+
+**這跟 worktree 無關。** worktree 是一個角色一個目錄,不必動;換的是 session,
+同一個 worktree 底下開新的就好。`pnpm role` 會在開場問你這條 session 要做哪個任務。
+
 ## 角色與可寫路徑
 
 見 `scripts/scope.json`。CI 會強制執行,違反會擋 PR。

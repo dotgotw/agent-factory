@@ -74,7 +74,7 @@ test('verify 裡 check:boundaries 必須排在 typecheck 之前', () => {
   // 這條順序是有負載的,不是排版。殘留的 fixture 被 .gitignore 蓋住、卻在
   // e2e/tsconfig.json 的 include 裡,所以 typecheck 先跑就會紅在一個
   // 「git status 看不到、自己也沒寫過」的檔案上,而 check-boundaries.mjs 裡
-  // 那段專門為此寫的診斷永遠跑不到。architect 為此卡了 12 小時。
+  // 那段專門為此寫的診斷永遠跑不到。architect 撞到的那個殘留物躺了 12 小時。
   //
   // 反過來排,診斷會先說話,而且會順手把殘留物清掉。
   const { scripts } = JSON.parse(readFileSync(join(rootDir, 'package.json'), 'utf8'));
