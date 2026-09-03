@@ -1,6 +1,10 @@
 node_modules/
 dist/
 .env
+# 角色的兩個本機來源。任何一個被 commit,沒有自己設 AGENT_ROLE 的 session 就全部
+# 拿到同一個角色,而 CI 認的是 PR label 不是這兩個檔案 —— 靜默退化,不會有紅燈。
+# settings.local.json 是 App 裡唯一能在啟動時固定 AGENT_ROLE 的地方(所以遲早
+# 有人會建它),而它原本只被某台機器的 ~/.gitignore_global 擋著。見 CR-007。
 .claude/role
 .claude/settings.local.json
 
