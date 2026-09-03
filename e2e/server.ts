@@ -25,8 +25,71 @@
  * backend 自己選 port 再回報,那要改 backend/src/ —— 跨角色,得開 CR,
  * 而以目前的機率不值得。
  *
+ *
+ * ## fail=0 但 cancelled>0:認它,以及它其實是上面那個窗口
+ *
+ * 記在這裡是因為**這是七個 spec 唯一共用的檔案**,而下一次被取消的不一定是同一支
+ * spec —— 放進某一支 spec 的註解,只有那一支再中的時候才幫得上忙。
+ *
+ *     e2e/malformed-json.spec.ts
+ *     not ok  AC-016: POST 的 body 是壞掉的 JSON...
+ *       failureType: 'cancelledByParent'
+ *       error: 'test did not finish before its parent and was cancelled'
+ *     # pass 47  fail 0  cancelled 4        exit=1
+ *
+ * 認它的特徵是 **fail=0、cancelled>0、exit 非零**:沒有任何一條斷言錯,是測試沒跑完
+ * 就被父層取消。**看到 not ok 先往 failureType 看,不要先讀斷言訊息** —— 讀斷言會
+ * 讓人以為是那支測試的問題,而被取消的那幾條完全是無辜的。
+ *
+ * ### 它的上游是 before() 的 hookFailed
+ *
+ * cancelledByParent 只是結果。同一份輸出裡往上找,會有一則 hookFailed:
+ *
+ *     failureType: 'hookFailed'
+ *     Error: listen EADDRINUSE: address already in use :::49565
+ *     # pass 45  fail 0  cancelled 6
+ *
+ * before() 綁不到 port → 那個 describe 的 subtest 一條都沒跑 → 全部 cancelled,
+ * 而 fail 是 0 **正因為沒有斷言執行過**。所以這不是新的謎題,是上一節那個
+ * 「listen(0) 關掉之後到 backend 綁上去之間仍有窗口」被真的撞到的樣子。
+ *
+ * 兩件事別搞混:CR-004 修的是「連上殘留的 server」(測試照綠,對象錯了),
+ * 這個是「根本沒起來」(測試不綠,而且紅在無辜的地方)。同一個 port 窗口,
+ * 兩種完全不同的症狀。
+ *
+ * ### 分母(比訊號本身重要)
+ *
+ *     infra       做別的事時順手撞到        約 1 / 8
+ *     architect   閒置連跑                  0 / 10
+ *     architect   4 個 verify 同時跑        1 / 12,接著 0 / 16
+ *     qa          4 個 test:e2e 同時跑      1 / 64(就是上面那份 EADDRINUSE)
+ *     ------------------------------------------------------------
+ *     並行合計                              2 / 92  ≈ 2%
+ *
+ * **「並行就能重現」不成立。** 那是第一次 1/12 之後的推論,再跑 16 次 0 命中就塌了。
+ * 站得住的說法只有兩句:閒置時沒見過;並行時約 2%,無法隨叫隨到。
+ *
+ * ### 再踩到的時候不要做的事
+ *
+ * 不要加 sleep、不要放寬斷言、不要為 ECONNRESET 加重試。2% 的間歇**單次綠不代表
+ * 修好了** —— 一個什麼都沒改的分支也有 98% 的機率是綠的。能當證據的是同一條指令在
+ * 修法前後各跑幾十次的命中率,不是一次綠燈(agent-workflow 第 5 節)。
+ *
+ * ### 真正的修法不在這個檔案
+ *
+ * 要讓窗口歸零,得讓 backend 自己選 port 再回報,而那要改 backend/src/ —— 跨角色。
+ * 依 ADR-009,跨 scope 的知識家是 CR:**見 change-requests/CR-013.md**。
+ * 在它被裁決之前,這裡就是這件事唯一的記錄。
+ *
+ * ### 量分母的人請先按形狀分類,不要只看 exit code
+ *
+ * e2e 紅有不只一種原因。量這個間歇的時候,qa 在 64 次裡另外撞到 2 次
+ * `fail=1 cancelled=0` —— 那是 notification.spec.ts 自己的時間窗下界取錯邊,
+ * 與本節無關,已修(見該檔 AC-008 第三條的註解)。**兩種混在一起數,分母就沒有意義。**
+ *
  * 本檔不是 spec(`test:e2e` 的 glob 只收 *.spec.ts),同樣不 import backend/。
  */
+// 坑(下一個踩的人:qa):並行跑 e2e 約 2% 會 fail=0/cancelled>0,根因是 before() 撞 EADDRINUSE —— 見本檔檔頭與 CR-013
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer, type AddressInfo } from 'node:net';

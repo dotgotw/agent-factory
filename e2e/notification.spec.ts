@@ -129,12 +129,16 @@ describe('Projects API — 負責人通知', () => {
       ownerEmail: 'owner@example.com',
     });
 
-    const first = await setStatus(created.id, 'archived');
-    const firstAt = assertWithinWindow(first.lastNotifiedAt, windowStart(), '第一次異動');
-
+    // 下界必須在請求**之前**取。寫成 windowStart() 當引數會在 await 之後才求值,
+    // 而它往下取整到秒 —— 請求跨過秒邊界時,下界就會晚於伺服器記下的時間,
+    // 斷言在一個什麼都沒錯的 run 上變紅。實測 2/64,修法是把它提到上一行。
     const start = windowStart();
+    const first = await setStatus(created.id, 'archived');
+    const firstAt = assertWithinWindow(first.lastNotifiedAt, start, '第一次異動');
+
+    const secondStart = windowStart();
     const second = await setStatus(created.id, 'active');
-    const secondAt = assertWithinWindow(second.lastNotifiedAt, start, '第二次異動');
+    const secondAt = assertWithinWindow(second.lastNotifiedAt, secondStart, '第二次異動');
 
     // 不用嚴格大於:兩次請求可能落在同一毫秒,那會是偽紅。
     // 「有沒有重新通知」由上面的時間窗負責 —— 第二個值必須晚於第二次請求之前
