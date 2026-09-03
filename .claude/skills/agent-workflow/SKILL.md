@@ -77,6 +77,29 @@ label 要誠實反映你這個 session 被指派的角色。掛一個「剛好�
 
 跨角色的變更**拆成多個 PR**,不要掛多個 label(CI 會擋)。
 
+### 送出之後起兩個背景監看,不要等人告訴你結果
+
+CI 綠不綠、合併了沒,兩件都查得到。**兩個都用背景跑**(`run_in_background`),
+它們結束時你會被叫醒:
+
+```bash
+gh pr checks <PR> --watch --interval 15
+```
+
+```bash
+end=$((SECONDS+3600)); until [ "$(gh pr view <PR> --json state --jq .state)" != "OPEN" ] || [ $SECONDS -ge $end ]; do sleep 30; done; gh pr view <PR> --json number,state --jq '"#\(.number) \(.state)"'
+```
+
+- **上限 60 分鐘**,到時間就收掉,不要掛整天。
+- **不論怎麼結束都印出最後的狀態**,所以「合併了」與「到時間還沒合併」分得開。
+  安靜消失的監看比沒有監看更糟 —— 你會以為自己還在等。
+- 合併之後回到自己的角色分支再開下一張:
+  `git fetch origin && git checkout role/<你的角色> && git reset --hard origin/main`
+  (疊放的 PR 在第一棒合併之後要 rebase,見 `README.md`)
+
+**監看只答得出「合併了沒」。** 使用者決定不合併、要你改、或有別的優先順序,
+那些只會用講的 —— 監看不是等人回覆的替代品,它只是讓你不必為了一件查得到的事去問。
+
 ## 5. 自己驗自己:探針與數字
 
 這個 repo 的協作方式是「我實測給你看」——PR 描述裡的探針、回報給別的 session 的
