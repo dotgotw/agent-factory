@@ -59,20 +59,22 @@
  *
  * ### 分母(比訊號本身重要)
  *
- *     infra       做別的事時順手撞到        約 1 / 8
- *     architect   閒置連跑                  0 / 10
- *     architect   4 個 verify 同時跑        1 / 12,接著 0 / 16
- *     qa          4 個 test:e2e 同時跑      1 / 64(就是上面那份 EADDRINUSE)
- *     ------------------------------------------------------------
- *     並行合計                              2 / 92  ≈ 2%
+ *     infra       做別的事時順手撞到        約 1 / 8    (條件未受控)
+ *     architect   閒置連跑 pnpm verify      0 / 10
+ *     architect   4 個 pnpm verify 並行     1 / 12,接著 0 / 16
+ *     qa          4 個 test:e2e 並行        1 / 64      (就是上面那份 EADDRINUSE)
+ *
+ * **不要把這幾列加起來。** 三個人量的不是同一條指令:`verify` 每次會多跑
+ * check:boundaries 等七段、單次時間長好幾倍,`test:e2e` 只有測試 —— 每次 run 暴露
+ * 在窗口下的時間不同,命中率本來就不可比。硬加出來的「2/92」是一個沒有意義的數字。
+ * 能說的只有各列自己,以及一個量級:**並行時是百分之個位數,閒置時沒見過。**
  *
  * **「並行就能重現」不成立。** 那是第一次 1/12 之後的推論,再跑 16 次 0 命中就塌了。
- * 站得住的說法只有兩句:閒置時沒見過;並行時約 2%,無法隨叫隨到。
  *
  * ### 再踩到的時候不要做的事
  *
- * 不要加 sleep、不要放寬斷言、不要為 ECONNRESET 加重試。2% 的間歇**單次綠不代表
- * 修好了** —— 一個什麼都沒改的分支也有 98% 的機率是綠的。能當證據的是同一條指令在
+ * 不要加 sleep、不要放寬斷言、不要為 ECONNRESET 加重試。百分之個位數的間歇
+ * **單次綠不代表修好了** —— 一個什麼都沒改的分支九成以上的機率也是綠的。能當證據的是同一條指令在
  * 修法前後各跑幾十次的命中率,不是一次綠燈(agent-workflow 第 5 節)。
  *
  * ### 真正的修法不在這個檔案
@@ -89,7 +91,7 @@
  *
  * 本檔不是 spec(`test:e2e` 的 glob 只收 *.spec.ts),同樣不 import backend/。
  */
-// 坑(下一個踩的人:qa):並行跑 e2e 約 2% 會 fail=0/cancelled>0,根因是 before() 撞 EADDRINUSE —— 見本檔檔頭與 CR-013
+// 坑(下一個踩的人:qa):並行跑 e2e 偶發 fail=0/cancelled>0,根因是 before() 撞 EADDRINUSE —— 見本檔檔頭與 CR-013
 import { spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer, type AddressInfo } from 'node:net';
